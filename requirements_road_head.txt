@@ -1,0 +1,5 @@
+# Install alongside the repository's base requirements for the NuScenes road experiment.
+nuscenes-devkit
+PyYAML
+matplotlib
+requests

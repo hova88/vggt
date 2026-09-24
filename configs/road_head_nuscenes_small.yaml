@@ -1,0 +1,44 @@
+data:
+  root: /data/nuscenes
+  version: auto
+  annotation: /data/nuscenes/road_labels.jsonl
+  camera: CAM_FRONT
+  num_frames: 4
+  frame_stride: 1
+  max_sequences: 500
+  scene_split: true
+  pad_history: false
+  preprocess_mode: crop
+  image_width: 280  # 518 is original VGGT size; 280 fits 4 frames on a 16 GB GPU
+  val_fraction: 0.2
+  color_jitter: 0.0
+model:
+  checkpoint: null  # local VGGT model.pt; otherwise facebook/VGGT-1B
+  road_head:
+    road_dim: 256
+    spatial_num_heads: 8
+    temporal_num_heads: 8
+    temporal_layers: 2
+    temporal_ffn_dim: 1024
+    dropout: 0.1
+    num_classes: 5
+    use_camera_token: false
+training:
+  finetune_mode: head_only
+  last_blocks: 2
+  epochs: 30
+  batch_size: 1
+  accum_steps: 1
+  num_workers: 0
+  head_lr: 0.0001
+  backbone_lr: 0.000002
+  weight_decay: 0.01
+  amp: bf16
+  grad_clip: 1.0
+  seed: 42
+  output_dir: outputs/road_head
+calibration:
+  temperature_scaling: true
+  ece_bins: 10
+hmm:
+  use_prior_correction: false

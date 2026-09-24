@@ -27,13 +27,17 @@ def detect_nuscenes(root, version='auto'):
 def read_annotations(path):
     path = Path(path)
     if not path.is_file():
-        return {}
+        raise FileNotFoundError(f'Road annotation file not found: {path}')
     annotations = {}
-    for line_no, line in enumerate(path.read_text().splitlines(), 1):
+    for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
         if not line.strip():
             continue
         row = json.loads(line)
-        token = row['sample_token']
+        if not isinstance(row, dict):
+            raise ValueError(f'{path}:{line_no}: annotation must be an object')
+        token = row.get('sample_token')
+        if not isinstance(token, str) or not token:
+            raise ValueError(f'{path}:{line_no}: invalid sample_token')
         has_hard, has_soft = 'label' in row, 'soft_label' in row
         if has_hard == has_soft:
             raise ValueError(f'{path}:{line_no}: provide exactly one of label or soft_label')
@@ -42,7 +46,9 @@ def read_annotations(path):
                 raise ValueError(f'{path}:{line_no}: invalid hard label')
         else:
             vals = row['soft_label']
-            if len(vals) != 5 or any(not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 for v in vals) or abs(sum(vals)-1)>1e-3:
+            if (not isinstance(vals, list) or len(vals) != 5 or
+                    any(type(v) not in (int, float) or not math.isfinite(v) or v < 0
+                        for v in vals) or abs(sum(vals) - 1) > 1e-3):
                 raise ValueError(f'{path}:{line_no}: invalid soft label')
         if token in annotations:
             raise ValueError(f'Duplicate annotation: {token}')
@@ -58,10 +64,9 @@ def load_nuscenes(root, version='auto'):
 
 
 def build_records(nusc, annotations, num_frames=4, frame_stride=1, camera='CAM_FRONT',
-                  max_sequences=500, pad_history=False, dummy_labels=False):
-    if not annotations and not dummy_labels:
-        raise FileNotFoundError('No real road annotations. Fill /data/nuscenes/road_labels.jsonl first; '
-                                '--dummy-labels is ONLY for code smoke tests and has NO training meaning.')
+                  max_sequences=500, pad_history=False):
+    if not annotations:
+        raise ValueError('No labeled road annotations were found')
     records, stats = [], Counter()
     scene_names = {x['token']: x['name'] for x in nusc.scene}
     for scene in sorted(nusc.scene, key=lambda x: x['name']):
@@ -77,8 +82,7 @@ def build_records(nusc, annotations, num_frames=4, frame_stride=1, camera='CAM_F
             row = annotations.get(sample['token'])
             if row is None:
                 stats['missing_annotation'] += 1
-                if not dummy_labels:
-                    continue
+                continue
             indices = [i - j * frame_stride for j in range(num_frames-1, -1, -1)]
             if indices[0] < 0 and not pad_history:
                 stats['short_history'] += 1
@@ -89,11 +93,8 @@ def build_records(nusc, annotations, num_frames=4, frame_stride=1, camera='CAM_F
             if any(not Path(p).is_file() for p in paths):
                 stats['missing_image'] += 1
                 continue
-            if row is not None and 'scene_token' in row and row['scene_token'] != scene['token']:
+            if 'scene_token' in row and row['scene_token'] != scene['token']:
                 raise ValueError(f'Scene token mismatch for {sample["token"]}')
-            if row is None:
-                # Deterministic fabricated targets, explicitly smoke-only.
-                row = {'sample_token': sample['token'], 'label': i % 5, '_dummy': True}
             records.append({'sample_token': sample['token'], 'scene_token': scene['token'],
                             'scene_name': scene_names[scene['token']], 'timestamps': [f['timestamp'] for f in frames],
                             'image_paths': paths, 'annotation': row})
@@ -158,4 +159,4 @@ class NuScenesRoadSequenceDataset(Dataset):
         target = torch.tensor(row['soft_label'], dtype=torch.float32) if 'soft_label' in row else torch.tensor(row['label'], dtype=torch.long)
         return {'images': images, 'target': target, 'sample_token': r['sample_token'],
                 'scene_token': r['scene_token'], 'timestamps': r['timestamps'],
-                'image_paths': r['image_paths'], 'dummy_label': bool(row.get('_dummy', False))}
+                'image_paths': r['image_paths']}

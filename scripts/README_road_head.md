@@ -1,75 +1,59 @@
-# NuScenes CAM_FRONT road-state experiment
+# NuScenes road-state training
 
-The five labels are **external human annotations**: 0 elevated_up, 1 elevated_down,
-2 main_road, 3 side_road, 4 intersection. NuScenes does not supply them. Each JSONL row
-must have `sample_token` and exactly one of `label` (integer 0–4) or `soft_label`
-(five nonnegative probabilities summing to 1). `scene_token` is optional and validated.
-The label describes the **last** frame in the sequence.
+The classifier predicts five classes from four ordered `CAM_FRONT` frames:
+`elevated_up`, `elevated_down`, `main_road`, `side_road`, and `intersection`.
+NuScenes does not provide these labels. The annotation file configured at
+`data.annotation` must contain one JSON object per target `sample_token`, with
+exactly one of `label` (integer 0–4) or `soft_label` (five probabilities).
+The label describes the final frame.
 
-The commands below use the `uniad2.0` environment. The current config automatically
-selects `v1.0-mini` when available and keeps train/validation scenes disjoint.
+The archived Qwen files under `outputs/road_head` are **unverified proposals**.
+They contain known false intersection proposals and are not suitable as verified
+training or calibration labels without review.
 
-```bash
-conda run -n uniad2.0 python scripts/build_nuscenes_road_manifest.py \
-  --nuscenes-root /data/nuscenes \
-  --output /data/nuscenes/road_labels_template.jsonl --max-samples 500
-```
+## Scene-split training
 
-Add real labels to the JSONL rows and save the finished file as
-`/data/nuscenes/road_labels.jsonl`. Do not give a label to an uncertain sample unless
-you have an actual soft annotation. The generator never writes labels.
+Run from the repository root. `--pretrained` points to a local VGGT `model.pt`;
+it overrides `model.checkpoint` in the YAML. If neither is provided, the loader
+uses the official Hugging Face checkpoint.
 
 ```bash
-# One complete shape/gradient/attention check with fabricated labels and random VGGT.
-# This checks code only and does not create a training checkpoint.
-conda run -n uniad2.0 python scripts/train_road_head.py \
+python scripts/train_road_head.py \
   --config configs/road_head_nuscenes_small.yaml \
-  --dummy-labels --random-vggt --smoke --visualize-smoke
+  --pretrained /model/vggt-1b.pt
 
-# After real annotation exists, test overfitting 16–32 examples.
-conda run -n uniad2.0 python scripts/train_road_head.py \
-  --config configs/road_head_nuscenes_small.yaml --tiny-overfit
+python scripts/eval_road_head.py \
+  --config configs/road_head_nuscenes_small.yaml \
+  --checkpoint outputs/road_head/best.pt
 
-# Scene-split small experiment, then evaluation and validation-only calibration.
-conda run -n uniad2.0 python scripts/train_road_head.py \
-  --config configs/road_head_nuscenes_small.yaml
-conda run -n uniad2.0 python scripts/eval_road_head.py \
-  --config configs/road_head_nuscenes_small.yaml --checkpoint outputs/road_head/best.pt
-conda run -n uniad2.0 python scripts/calibrate_road_head.py \
-  --config configs/road_head_nuscenes_small.yaml --checkpoint outputs/road_head/best.pt
-conda run -n uniad2.0 python scripts/infer_road_head.py \
-  --config configs/road_head_nuscenes_small.yaml --checkpoint outputs/road_head/best.pt \
-  --sample-token YOUR_TARGET_SAMPLE_TOKEN
+python scripts/calibrate_road_head.py \
+  --config configs/road_head_nuscenes_small.yaml \
+  --checkpoint outputs/road_head/best.pt
 ```
 
-For four explicit ordered images, replace `--sample-token` with
-`--images oldest.jpg older.jpg newer.jpg newest.jpg`. Inference loads
-`temperature.json` automatically. `road_prob` is the calibrated posterior; with
-`hmm.use_prior_correction: true`, it also returns the normalized posterior / training
-prior score as `hmm_observation`. This is a pseudo emission score, not a learned HMM.
+Training uses disjoint scenes for train and validation; `best.pt` is selected
+by validation NLL. The checkpoint stores the road head, updated aggregator
+parameters, and local pretrained path. Evaluation and calibration reload that
+path when `model.checkpoint` is unset. Keep the base VGGT file available.
 
-By default `model.pretrained: true` loads `facebook/VGGT-1B` from Hugging Face. A local
-VGGT state dict can instead be set with `model.checkpoint`. The current small config
-uses VGGT's original 518-width preprocess followed by a common bicubic reduction to
-280 pixels, with the height rounded to a multiple of 14, to fit T=4 on a 16 GB GPU.
-Set `data.image_width: 518` for original resolution if memory permits. No horizontal
-flip or random crop is applied. The head-only mode freezes the aggregator and runs it
-without gradients. `training.finetune_mode: last_blocks` unfreezes the final
-`frame_blocks` and `global_blocks`, leaving the DINO patch embed frozen.
+## Two-GPU v1.0-mini memorization experiment
 
-`best.pt` is selected by validation NLL. Metrics and visualizations are written under
-`outputs/road_head`. A validation set with fewer than 50 sequences triggers a
-calibration warning. Tiny-overfit uses its training subset for validation by design;
-do not interpret those metrics as generalization.
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
+  scripts/train_road_overfit_mini_ddp.py \
+  --config configs/road_head_nuscenes_small.yaml \
+  --pretrained /model/vggt-1b.pt
+```
 
-## Model-assisted annotation archive
+This experiment forces `v1.0-mini`, pads short scene histories, and uses the
+same labeled samples for training and evaluation. Its metrics measure
+memorization, not generalization. Defaults are width 518, batch size 4 per GPU,
+four trainable final frame/global blocks, bf16, and class weights
+`1,1,1,8,2`. It stops early at 100% same-sample accuracy and NLL at most
+0.05. The exact experiment settings are saved as
+`runs/road_overfit_mini_ddp/config.yaml`; use that config when loading its
+`best.pt` later. Increase `--batch-size` only after checking peak GPU memory.
 
-The complete `v1.0-mini` CAM_FRONT **sample-keyframe** archive has 404 targets in
-`outputs/road_head/road_labels_v1mini_all_samples_template.jsonl`. The paired
-`road_labels_v1mini_all_samples_qwen_flash_proposals.jsonl` contains model proposals,
-including 30 scene-start targets whose missing history was repeated. Run
-`python scripts/validate_road_proposals.py` to check coverage and write the summary.
-These JSONL rows intentionally contain `proposed_label`, not `label`: the `View Image`
-audit found false `intersection` predictions, so the file is not ground truth and
-must not be used as the default supervised annotation manifest. Non-keyframe
-`sweeps/CAM_FRONT` images are outside this sample-token archive.
+`outputs/road_head` also contains sample-keyframe templates, Qwen proposals,
+visual audit notes, and their validation summary. Run
+`python scripts/validate_road_proposals.py` to check proposal coverage.

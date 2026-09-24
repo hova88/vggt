@@ -13,8 +13,7 @@ data:
   val_fraction: 0.2
   color_jitter: 0.0
 model:
-  pretrained: true
-  checkpoint: null  # local VGGT state_dict; otherwise facebook/VGGT-1B from Hugging Face
+  checkpoint: null  # local VGGT model.pt; otherwise facebook/VGGT-1B
   road_head:
     road_dim: 256
     spatial_num_heads: 8

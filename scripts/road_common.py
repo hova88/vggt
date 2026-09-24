@@ -1,8 +1,6 @@
-"""Shared configuration, model loading, metrics and visualization for road scripts."""
+"""Shared data, VGGT loading, metrics and visualization for road scripts."""
 import json
-import math
 import gc
-import os
 from pathlib import Path
 from contextlib import nullcontext
 import numpy as np
@@ -21,16 +19,14 @@ def config(path):
     return yaml.safe_load(Path(path).read_text())
 
 
-def data_splits(cfg, dummy_labels=False):
+def data_splits(cfg):
     d = cfg['data']
     if not d.get('scene_split', True):
         raise ValueError('Scene-level split is required to avoid adjacent-frame leakage')
     nusc = load_nuscenes(d['root'], d.get('version', 'auto'))
     ann = read_annotations(d['annotation'])
-    if dummy_labels:
-        print('*** DUMMY LABELS: CODE SMOKE TEST ONLY; NO TRAINING OR METRIC MEANING ***', flush=True)
     records, stats = build_records(nusc, ann, d['num_frames'], d['frame_stride'], d['camera'],
-                                   d['max_sequences'], d.get('pad_history', False), dummy_labels)
+                                   d['max_sequences'], d.get('pad_history', False))
     train, val = split_records(records, d['val_fraction'], cfg['training']['seed'])
     counts = class_counts(train)
     prior = (counts + 1e-6) / (counts.sum() + 5e-6)
@@ -41,12 +37,14 @@ def data_splits(cfg, dummy_labels=False):
     return train, val, prior, stats
 
 
-def loader(records, cfg, train=False):
+def loader(records, cfg, train=False, sampler=None):
     return DataLoader(NuScenesRoadSequenceDataset(records, cfg['data']['preprocess_mode'],
                       cfg['data'].get('color_jitter', 0) if train else 0,
                       cfg['data'].get('image_width', 518)),
-                      batch_size=cfg['training']['batch_size'], shuffle=train,
+                      batch_size=cfg['training']['batch_size'], shuffle=train and sampler is None,
+                      sampler=sampler,
                       num_workers=cfg['training']['num_workers'], pin_memory=True,
+                      persistent_workers=cfg['training']['num_workers'] > 0,
                       collate_fn=road_collate)
 
 
@@ -63,92 +61,161 @@ def road_collate(items):
     return batch
 
 
-def make_model(cfg, prior=None, checkpoint=None, pretrained=True):
-    if pretrained and cfg['model'].get('checkpoint'):
-        base = VGGT(enable_camera=False, enable_point=False, enable_depth=False, enable_track=False)
-        state = torch.load(cfg['model']['checkpoint'], map_location='cpu')
-        state = state.get('model', state.get('state_dict', state))
-        state = {k.removeprefix('module.'): v for k, v in state.items()}
-        if any(k.startswith('aggregator.') for k in state):
-            pass
-        elif any(k.startswith('frame_blocks.') for k in state):
-            state = {'aggregator.'+k: v for k, v in state.items()}
-        missing, unexpected = base.load_state_dict(state, strict=False)
-        aggregator_missing = [k for k in missing if k.startswith('aggregator.')]
-        if aggregator_missing:
-            raise RuntimeError(f'Local checkpoint is missing {len(aggregator_missing)} VGGT aggregator tensors')
-        print(f'VGGT checkpoint: missing={len(missing)}, unexpected={len(unexpected)}')
-    elif pretrained:
-        if torch.cuda.is_available():
-            from huggingface_hub import hf_hub_download
-            from safetensors import safe_open
-            weight_path = hf_hub_download('facebook/VGGT-1B', 'model.safetensors')
-            amp = cfg['training']['amp']
-            dtype = (torch.bfloat16 if amp == 'bf16' and torch.cuda.is_bf16_supported()
-                     else torch.float16 if amp in ('bf16', 'fp16') else torch.float32)
-            # Allocate once on GPU, then copy only aggregator tensors one at a time.
-            # Loading the 5 GB full checkpoint on CPU first can exhaust shared RAM/VRAM.
-            base = VGGT(enable_camera=False, enable_point=False, enable_depth=False,
-                        enable_track=False).to(device='cuda', dtype=dtype)
-            if cfg['training']['finetune_mode'] == 'last_blocks':
-                n = cfg['training']['last_blocks']
-                for blocks in (base.aggregator.frame_blocks, base.aggregator.global_blocks):
-                    for block in blocks[-n:]:
-                        block.float()  # keep trainable weights and AdamW updates in fp32
-            state = base.state_dict()
-            with safe_open(weight_path, framework='pt', device='cpu') as weights, torch.no_grad():
-                available = set(weights.keys())
-                missing = [k for k in state if k.startswith('aggregator.') and k not in available]
-                if missing:
-                    raise RuntimeError(f'Pretrained checkpoint missing aggregator tensors: {missing[:5]}')
-                for key, dst in state.items():
-                    if key.startswith('aggregator.'):
-                        dst.copy_(weights.get_tensor(key).to(device=dst.device, dtype=dst.dtype))
-            gc.collect()
-            try:
-                with open(weight_path, 'rb') as weight_file:
-                    os.posix_fadvise(weight_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
-            except OSError:
-                pass
-            print(f'Loaded pretrained aggregator from {weight_path} by streamed tensor copy', flush=True)
-        else:
-            base = VGGT.from_pretrained('facebook/VGGT-1B', enable_camera=False,
-                                        enable_point=False, enable_depth=False, enable_track=False)
-    else:
-        print('*** RANDOM VGGT WEIGHTS: CODE SMOKE TEST ONLY ***', flush=True)
-        base = VGGT(enable_camera=False, enable_point=False, enable_depth=False, enable_track=False)
+def _amp_dtype(amp):
+    if amp == 'bf16':
+        if torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
+            raise ValueError('bf16 requested but not supported by the current GPU')
+        return torch.bfloat16
+    if amp == 'fp16':
+        return torch.float16
+    if amp == 'none':
+        return torch.float32
+    raise ValueError(f'Unknown AMP mode: {amp}')
+
+
+def _new_vggt():
+    return VGGT(enable_camera=False, enable_point=False, enable_depth=False, enable_track=False)
+
+
+def _local_aggregator(base, path):
+    path = Path(path).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f'VGGT checkpoint not found: {path}')
+    state = torch.load(path, map_location='cpu', weights_only=True, mmap=True)
+    for key in ('model', 'state_dict', 'model_state_dict'):
+        if isinstance(state, dict) and isinstance(state.get(key), dict):
+            state = state[key]
+    if not isinstance(state, dict):
+        raise TypeError('VGGT checkpoint must contain a tensor state_dict')
+
+    expected = base.aggregator.state_dict()
+    loaded = {}
+    wrappers = ('module.', '_orig_mod.', 'model.', 'vggt.', 'backbone.')
+    for key, value in state.items():
+        if not isinstance(key, str) or not isinstance(value, torch.Tensor):
+            continue
+        while key.startswith(wrappers):
+            key = next(key[len(prefix):] for prefix in wrappers if key.startswith(prefix))
+        key = key.removeprefix('aggregator.')
+        if key in expected:
+            if key in loaded:
+                raise ValueError(f'Duplicate VGGT aggregator key: {key}')
+            loaded[key] = value
+    missing = sorted(expected.keys() - loaded.keys())
+    wrong_shape = sorted(key for key in expected.keys() & loaded.keys()
+                         if expected[key].shape != loaded[key].shape)
+    if missing or wrong_shape:
+        raise RuntimeError(f'VGGT aggregator checkpoint mismatch: '
+                           f'missing={missing[:8]}, wrong_shape={wrong_shape[:8]}')
+    base.aggregator.load_state_dict(loaded, strict=True)
+    print(f'Loaded {len(loaded)} VGGT aggregator tensors from {path}', flush=True)
+    return base
+
+
+def _hub_aggregator(cfg):
+    if not torch.cuda.is_available():
+        return VGGT.from_pretrained('facebook/VGGT-1B', enable_camera=False,
+                                    enable_point=False, enable_depth=False, enable_track=False)
+
+    from huggingface_hub import hf_hub_download
+    from safetensors import safe_open
+
+    path = hf_hub_download('facebook/VGGT-1B', 'model.safetensors')
+    device = torch.device('cuda', torch.cuda.current_device())
+    base = _new_vggt().to(device=device, dtype=_amp_dtype(cfg['training']['amp']))
+    if cfg['training']['finetune_mode'] == 'last_blocks':
+        n = cfg['training']['last_blocks']
+        if not 1 <= n <= base.aggregator.depth:
+            raise ValueError('last_blocks must be between 1 and aggregator depth')
+        for blocks in (base.aggregator.frame_blocks, base.aggregator.global_blocks):
+            for block in blocks[-n:]:
+                block.float()
+    with safe_open(path, framework='pt', device='cpu') as weights, torch.no_grad():
+        available = set(weights.keys())
+        tensors = base.aggregator.state_dict()
+        missing = [key for key in tensors if f'aggregator.{key}' not in available]
+        if missing:
+            raise RuntimeError(f'Pretrained VGGT is missing aggregator tensors: {missing[:8]}')
+        for key, destination in tensors.items():
+            destination.copy_(weights.get_tensor(f'aggregator.{key}').to(
+                device=destination.device, dtype=destination.dtype))
+    print(f'Loaded pretrained VGGT aggregator from {path}', flush=True)
+    return base
+
+
+def make_model(cfg, prior=None, checkpoint=None):
+    finetuned = (torch.load(checkpoint, map_location='cpu', weights_only=True, mmap=True)
+                 if checkpoint else None)
+    if finetuned is not None and not isinstance(finetuned, dict):
+        raise TypeError('Road checkpoint must be a dictionary')
+    pretrained_path = cfg['model'].get('checkpoint') or (
+        finetuned.get('pretrained_path') if finetuned else None)
+    base = (_local_aggregator(_new_vggt(), pretrained_path) if pretrained_path
+            else _hub_aggregator(cfg))
     model = VGGTRoadClassifier(base.aggregator, cfg['model']['road_head'],
                                cfg['training']['finetune_mode'], cfg['training']['last_blocks'],
                                class_prior=prior, use_prior_correction=cfg['hmm']['use_prior_correction'])
-    if checkpoint:
-        state = torch.load(checkpoint, map_location='cpu')
-        model.road_head.load_state_dict(state['road_head'])
-        if state.get('aggregator_trainable'):
-            model.aggregator.load_state_dict(state['aggregator_trainable'], strict=False)
-        model.temperature = float(state.get('temperature', 1.0))
-        if state.get('class_prior') is not None:
-            model.class_prior.copy_(torch.tensor(state['class_prior']))
+    if finetuned is not None:
+        model.road_head.load_state_dict(finetuned['road_head'], strict=True)
+        updates = finetuned.get('aggregator_trainable', {})
+        trained_cfg = (finetuned.get('config') or {}).get('training', {})
+        if trained_cfg.get('finetune_mode') == 'last_blocks' and not updates:
+            raise RuntimeError('Fine-tuned checkpoint has no updated VGGT block weights')
+        if updates:
+            expected = model.aggregator.state_dict()
+            invalid = sorted(key for key in updates if key not in expected)
+            if invalid:
+                raise RuntimeError(f'Unexpected aggregator update keys: {invalid[:8]}')
+            if trained_cfg.get('finetune_mode') == 'last_blocks':
+                n = trained_cfg['last_blocks']
+                first = model.aggregator.depth - n
+                prefixes = tuple(f'{block}.{index}.'
+                                 for block in ('frame_blocks', 'global_blocks')
+                                 for index in range(first, model.aggregator.depth))
+                trained_names = {name for name, _ in model.aggregator.named_parameters()
+                                 if name.startswith(prefixes)}
+                missing = sorted(trained_names - updates.keys())
+                if missing:
+                    raise RuntimeError(f'Fine-tuned checkpoint is missing block weights: {missing[:8]}')
+            model.aggregator.load_state_dict(updates, strict=False)
+        model.temperature = float(finetuned.get('temperature', 1.0))
+        if finetuned.get('class_prior') is not None:
+            model.class_prior.copy_(torch.as_tensor(finetuned['class_prior']))
     total = sum(p.numel() for p in model.parameters())
     head = sum(p.numel() for p in model.road_head.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'Params: total={total:,}, road_head={head:,}, trainable={trainable:,}, frozen={total-trainable:,}', flush=True)
+    print(f'Params: total={total:,}, road_head={head:,}, trainable={trainable:,}, '
+          f'frozen={total-trainable:,}', flush=True)
     return model
 
 
 def place_model(model, device, cfg):
     device = torch.device(device)
-    if device.type == 'cuda' and model.finetune_mode == 'head_only':
-        amp = cfg['training']['amp']
-        dtype = torch.bfloat16 if amp == 'bf16' and torch.cuda.is_bf16_supported() else torch.float16 if amp in ('bf16', 'fp16') else torch.float32
-        if next(model.aggregator.parameters()).device.type != 'cuda':
-            model.aggregator.to(dtype=dtype)
-            gc.collect()
-            model.aggregator.to(device=device)
-        model.road_head.to(device=device)
-        model.class_prior = model.class_prior.to(device)
-        print(f'Frozen VGGT aggregator resident as {dtype}', flush=True)
-        return model
+    if device.type == 'cuda' and next(model.aggregator.parameters()).device.type == 'cpu':
+        model.aggregator.to(dtype=_amp_dtype(cfg['training']['amp']))
+        if model.finetune_mode == 'last_blocks':
+            n = cfg['training']['last_blocks']
+            for blocks in (model.aggregator.frame_blocks, model.aggregator.global_blocks):
+                for block in blocks[-n:]:
+                    block.float()  # AdamW updates trainable weights in fp32.
+        gc.collect()
     return model.to(device)
+
+
+def parameter_groups(model, head_lr, backbone_lr):
+    head = [parameter for parameter in model.road_head.parameters() if parameter.requires_grad]
+    blocks = [parameter for parameter in model.aggregator.parameters() if parameter.requires_grad]
+    if not head or (model.finetune_mode == 'last_blocks' and not blocks):
+        raise RuntimeError('The requested road-head or VGGT blocks are frozen')
+    selected = {id(parameter) for parameter in head + blocks}
+    omitted = [name for name, parameter in model.named_parameters()
+               if parameter.requires_grad and id(parameter) not in selected]
+    if omitted:
+        raise RuntimeError(f'Trainable parameters missing from optimizer: {omitted[:8]}')
+    groups = [{'params': head, 'lr': head_lr}]
+    if blocks:
+        groups.append({'params': blocks, 'lr': backbone_lr})
+    return groups, head, blocks
 
 
 def target_prob(target):
@@ -164,8 +231,8 @@ def loss_fn(logits, target):
 def autocast_context(device, amp):
     if device.type != 'cuda':
         return nullcontext()
-    dtype = torch.bfloat16 if amp == 'bf16' and torch.cuda.is_bf16_supported() else torch.float16
-    return torch.autocast('cuda', dtype=dtype)
+    dtype = _amp_dtype(amp)
+    return nullcontext() if dtype == torch.float32 else torch.autocast('cuda', dtype=dtype)
 
 
 def collect(model, batches, device, amp, debug_first=False):

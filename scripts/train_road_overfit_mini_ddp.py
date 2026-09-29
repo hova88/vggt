@@ -113,6 +113,8 @@ def main():
     parser.add_argument("--no-vis", action="store_true", help="Disable the per-epoch visualization component")
     parser.add_argument("--vis-every", type=int, default=1,
                         help="Render attention every N epochs; metrics and error analysis remain per-epoch")
+    parser.add_argument("--vis-model-internals", action="store_true",
+                        help="Capture interactive VGGT internals for one fixed probe on attention epochs")
     parser.add_argument("--vis-attention-samples", type=int, default=3,
                         help="Fixed attention probes, selected across classes")
     parser.add_argument("--vis-error-samples", type=int, default=3,
@@ -154,6 +156,7 @@ def main():
             "output_dir": args.output_dir,
         })
         cfg["visualization"] = {"enabled": not args.no_vis, "attention_every": args.vis_every,
+                                "model_internals": args.vis_model_internals,
                                 "attention_samples": args.vis_attention_samples,
                                 "error_samples": args.vis_error_samples}
         seed = cfg["training"]["seed"]
@@ -211,7 +214,8 @@ def main():
                 visualizer = RoadTrainingVisualizer(
                     output_dir, records, ROAD_CLASSES, every=args.vis_every,
                     attention_samples=args.vis_attention_samples, error_samples=args.vis_error_samples,
-                    bins=cfg["calibration"]["ece_bins"], target_nll=args.target_nll, run_config=cfg)
+                    bins=cfg["calibration"]["ece_bins"], target_nll=args.target_nll, run_config=cfg,
+                    model_internals=args.vis_model_internals)
                 print(f"Visualizations: {visualizer.output_dir / 'index.html'}", flush=True)
         if world_size > 1:
             dist.barrier()

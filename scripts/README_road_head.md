@@ -129,6 +129,66 @@ A report directory belongs to its original run. Starting another training run
 with `--no-vis` does not update that report. The shared parent `config.yaml`
 may be overwritten by another run, so it is not a reliable historical snapshot.
 
+### Interactive model internals (EL-VIT style)
+
+`scripts/road_model_inspector.py` observes real tensors during one eval forward;
+`scripts/road_model_inspector.html` is its self-contained browser viewer. It
+shows patch input/kernel/output, actual MLP GELU input/output, DINO positional
+embedding contributions, selected feature channels, effective Q/K, individual
+attention heads, and patch feature cosine similarity. Select a frame, module,
+head, or captured query patch; clicking a marked input patch updates the views.
+Global attention can target another frame. Road spatial attention correctly
+uses an ego query rather than a patch-to-patch attention matrix.
+
+Enable it in the existing per-epoch component:
+
+```bash
+# Add to the normal training command:
+--vis-every 5 --vis-model-internals
+```
+
+On attention epochs, the first fixed probe gets a `cases/*_internals.html`
+link in the epoch report. It reuses that probe's existing debug forward; no
+extra model is loaded and training forwards have no inspection hooks. By
+default this captures the final DINO block, final VGGT frame/global blocks,
+and road spatial attention, heads 0/1, 32 display channels, and at most 64
+query patches. Cosine similarity is computed from the full feature dimension.
+Attention entries are reconstructed in FP32 from effective Q/K after actual
+normalization and RoPE. The sampled matrix is not renormalized; global
+softmax includes every frame and special token. These views show associations
+and information allocation, not class-conditioned causal attribution.
+
+Generate a viewer from an existing trained checkpoint without restarting
+training:
+
+```bash
+python scripts/road_model_inspector.py \
+  --checkpoint runs/road_overfit_mini_ddp/best.pt \
+  --pretrained /model/vggt-1b.pt \
+  --predictions runs/road_overfit_mini_ddp/visualizations/RUN/epoch_0005/predictions.jsonl \
+  --output-dir runs/model_inspection
+```
+
+Replace `RUN` with the report directory. `--predictions` preserves saved
+targets and image paths when live annotations have since changed; those
+historical prediction scores are not reused as new inference results.
+Without it, targets come from the live annotation file recorded in the
+checkpoint config. The viewer identifies checkpoint epoch, optimizer steps,
+and target source. The checkpoint's config snapshot controls preprocessing
+and model architecture; `--config` is only a fallback for older checkpoints
+without that snapshot. The default sample has distinct historical frames
+when available. Repeat `--sample-token TOKEN` for specific samples; use
+`--blocks 11,23 --heads 0,1,4,7` to capture more layers/heads (higher cost).
+
+Open the printed `index.html`, or serve its output directory through the
+existing SSH tunnel. Use a recent Chrome/Edge browser supporting native gzip
+decompression; no CDN or additional frontend dependencies are needed. Arrays
+use lossless BF16 packing when exactly representable, otherwise FP32, and
+gzip compression. A four-frame 518-wide default snapshot is approximately
+16 MB for the verified sample; allow time and disk space per saved probe.
+Existing reports cannot recover internal tensors that were never captured;
+checkpoint inference produces a separately identified snapshot.
+
 ### Refresh an existing report without retraining
 
 ```bash

@@ -15,6 +15,7 @@ import shutil
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
+from contextlib import nullcontext
 
 import numpy as np
 
@@ -200,7 +201,7 @@ def plot_attention(path, images, patches, temporal, row, names, camera_mass):
 
 class RoadTrainingVisualizer:
     def __init__(self, output_dir, records, class_names, every=1, attention_samples=3,
-                 error_samples=3, bins=10, target_nll=0.05, run_config=None):
+                 error_samples=3, bins=10, target_nll=0.05, run_config=None, model_internals=False):
         if every < 1 or min(attention_samples, error_samples) < 0 or bins < 1:
             raise ValueError('Invalid visualization interval or case count')
         self.names = [class_names[i] for i in range(len(class_names))]
@@ -210,6 +211,7 @@ class RoadTrainingVisualizer:
         self.indices = {r['sample_token']: i for i, r in enumerate(records)}
         self.every, self.error_samples, self.bins = every, error_samples, bins
         self.target_nll = target_nll
+        self.model_internals = model_internals
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         self.output_dir = Path(output_dir) / 'visualizations' / f'run_{stamp}'
         self.output_dir.mkdir(parents=True)
@@ -222,6 +224,7 @@ class RoadTrainingVisualizer:
         _json(self.output_dir / 'settings.json', {
             'every': every, 'attention_samples': attention_samples, 'error_samples': error_samples, 'bins': bins,
             'fixed_tokens': self.fixed_tokens, 'class_names': self.names, 'target_nll': target_nll,
+            'model_internals': model_internals,
             'evaluation': 'same samples as training; memorization, not generalization',
             'attention': 'road-head spatial/temporal query weights, averaged over heads; '
                          'not class-conditioned saliency or VGGT attention rollout'})
@@ -315,7 +318,8 @@ class RoadTrainingVisualizer:
             tokens = list(dict.fromkeys(self.fixed_tokens + summary['error_attention_tokens']))
             if tokens:
                 cases = self._render_cases(tokens, {r['sample_token']: r for r in rows}, epoch_dir,
-                                           model, dataset, device, amp)
+                                           model, dataset, device, amp,
+                                           optimizer_steps=training.get('optimizer_steps'))
         summary['attention_diagnostics'] = {
             token: json.loads((epoch_dir / relative).with_suffix('.json').read_text(encoding='utf-8'))['attention_diagnostics']
             for token, relative in cases.items()}
@@ -455,7 +459,7 @@ class RoadTrainingVisualizer:
         finally:
             plt.close(fig)
 
-    def _render_cases(self, tokens, rows, epoch_dir, model, dataset, device, amp):
+    def _render_cases(self, tokens, rows, epoch_dir, model, dataset, device, amp, optimizer_steps=None):
         import torch
         from scripts.road_common import autocast_context
         case_dir = epoch_dir / 'cases'
@@ -469,7 +473,13 @@ class RoadTrainingVisualizer:
                 if item['sample_token'] != token:
                     raise ValueError('Visualization dataset order differs from its records')
                 images = item['images']
-                with torch.no_grad(), autocast_context(device, amp):
+                inspect = self.model_internals and bool(self.fixed_tokens) and token == self.fixed_tokens[0]
+                if inspect:
+                    from scripts.road_model_inspector import ModelInspector
+                    inspector = ModelInspector(model)
+                else:
+                    inspector = nullcontext()
+                with inspector, torch.no_grad(), autocast_context(device, amp):
                     out = model(images.unsqueeze(0).to(device, non_blocking=True), debug=True)
                 spatial = _numpy(out['spatial_attention'][0])
                 temporal = _numpy(out['temporal_attention'][0])
@@ -480,6 +490,12 @@ class RoadTrainingVisualizer:
                                                        model.aggregator.patch_size,
                                                        model.road_head.use_camera_token)
                 stem = hashlib.sha256(token.encode('utf-8')).hexdigest()[:16]
+                if inspect:
+                    inspector.write(case_dir / f'{stem}_internals.html', images, rows[token],
+                                    self.names, debug_probs,
+                                    {'epoch': int(epoch_dir.name.split('_')[-1]),
+                                     'optimizer_steps': optimizer_steps,
+                                     'source': 'current model, same debug forward as attention overlay'})
                 plot_attention(case_dir / f'{stem}.png', images, patches, temporal, rows[token],
                                self.names, camera_mass)
                 np.savez_compressed(case_dir / f'{stem}.npz', spatial_attention=spatial,
@@ -522,7 +538,11 @@ class RoadTrainingVisualizer:
                              f'<td>{r["nll"]:.3f}</td><td>{r["error_epochs"]}/{r["error_streak"]}</td></tr>'
                              for r in errors[:20])
         def galleries(tokens):
-            return ''.join(f'<figure id="case-{escape(token)}"><figcaption>{escape(token)}</figcaption>'
+            def internals_link(token):
+                path = Path(cases[token]).with_name(Path(cases[token]).stem + '_internals.html')
+                return (f' · <a href="{path.as_posix()}">Interactive model internals</a>'
+                        if (epoch_dir / path).is_file() else '')
+            return ''.join(f'<figure id="case-{escape(token)}"><figcaption>{escape(token)}{internals_link(token)}</figcaption>'
                            f'<a href="{cases[token]}"><img loading="lazy" src="{cases[token]}" '
                            f'alt="Attention for {escape(token)}"></a></figure>' for token in tokens if token in cases)
         findings = ''.join(f'<li>{escape(message)}</li>' for message in summary.get('findings', []))

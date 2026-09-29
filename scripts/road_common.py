@@ -73,8 +73,27 @@ def _amp_dtype(amp):
     raise ValueError(f'Unknown AMP mode: {amp}')
 
 
-def _new_vggt():
-    return VGGT(enable_camera=False, enable_point=False, enable_depth=False, enable_track=False)
+def _aggregator_precision(aggregator, cfg):
+    aggregator.to(dtype=_amp_dtype(cfg['training']['amp']))
+    if cfg['training']['finetune_mode'] == 'last_blocks':
+        n = cfg['training']['last_blocks']
+        if not 1 <= n <= aggregator.depth:
+            raise ValueError('last_blocks must be between 1 and aggregator depth')
+        for blocks in (aggregator.frame_blocks, aggregator.global_blocks):
+            for block in blocks[-n:]:
+                block.float()  # AdamW updates trainable weights in fp32.
+
+
+def _new_vggt(cfg):
+    device = (torch.device('cuda', torch.cuda.current_device())
+              if torch.cuda.is_available() else torch.device('cpu'))
+    print(f'Building VGGT aggregator on {device}', flush=True)
+    # DDP workers must not each allocate a full FP32 model in host RAM.
+    with torch.device(device):
+        base = VGGT(enable_camera=False, enable_point=False, enable_depth=False, enable_track=False)
+    if device.type == 'cuda':
+        _aggregator_precision(base.aggregator, cfg)
+    return base
 
 
 def _local_aggregator(base, path):
@@ -121,15 +140,7 @@ def _hub_aggregator(cfg):
     from safetensors import safe_open
 
     path = hf_hub_download('facebook/VGGT-1B', 'model.safetensors')
-    device = torch.device('cuda', torch.cuda.current_device())
-    base = _new_vggt().to(device=device, dtype=_amp_dtype(cfg['training']['amp']))
-    if cfg['training']['finetune_mode'] == 'last_blocks':
-        n = cfg['training']['last_blocks']
-        if not 1 <= n <= base.aggregator.depth:
-            raise ValueError('last_blocks must be between 1 and aggregator depth')
-        for blocks in (base.aggregator.frame_blocks, base.aggregator.global_blocks):
-            for block in blocks[-n:]:
-                block.float()
+    base = _new_vggt(cfg)
     with safe_open(path, framework='pt', device='cpu') as weights, torch.no_grad():
         available = set(weights.keys())
         tensors = base.aggregator.state_dict()
@@ -150,7 +161,7 @@ def make_model(cfg, prior=None, checkpoint=None):
         raise TypeError('Road checkpoint must be a dictionary')
     pretrained_path = cfg['model'].get('checkpoint') or (
         finetuned.get('pretrained_path') if finetuned else None)
-    base = (_local_aggregator(_new_vggt(), pretrained_path) if pretrained_path
+    base = (_local_aggregator(_new_vggt(cfg), pretrained_path) if pretrained_path
             else _hub_aggregator(cfg))
     model = VGGTRoadClassifier(base.aggregator, cfg['model']['road_head'],
                                cfg['training']['finetune_mode'], cfg['training']['last_blocks'],
@@ -192,12 +203,7 @@ def make_model(cfg, prior=None, checkpoint=None):
 def place_model(model, device, cfg):
     device = torch.device(device)
     if device.type == 'cuda' and next(model.aggregator.parameters()).device.type == 'cpu':
-        model.aggregator.to(dtype=_amp_dtype(cfg['training']['amp']))
-        if model.finetune_mode == 'last_blocks':
-            n = cfg['training']['last_blocks']
-            for blocks in (model.aggregator.frame_blocks, model.aggregator.global_blocks):
-                for block in blocks[-n:]:
-                    block.float()  # AdamW updates trainable weights in fp32.
+        _aggregator_precision(model.aggregator, cfg)
         gc.collect()
     return model.to(device)
 

@@ -7,7 +7,8 @@ from pathlib import Path
 import numpy as np
 
 from scripts.road_training_visualizer import (RoadTrainingVisualizer, attention_grid,
-                                              plot_attention, prediction_rows)
+                                              attention_diagnostics, plot_attention, prediction_rows,
+                                              refresh_reports, report_findings)
 
 
 NAMES = {0: 'elevated_up', 1: 'elevated_down', 2: 'main_road', 3: 'side_road', 4: 'intersection'}
@@ -35,6 +36,34 @@ def metrics(logits, targets):
 
 
 class VisualizerTests(unittest.TestCase):
+    def test_uniform_attention_is_detected_without_false_concentration(self):
+        uniform = np.full((4, 3, 7), 0.6 / 21)
+        result = attention_diagnostics(uniform, np.full(4, 0.25))
+        self.assertTrue(result['spatial_near_uniform'])
+        self.assertTrue(result['temporal_near_uniform'])
+        np.testing.assert_allclose(result['spatial_normalized_entropy'], 1)
+        np.testing.assert_allclose(result['spatial_max_relative_deviation'], 0, atol=1e-12)
+        concentrated = np.zeros((4, 3, 7))
+        concentrated[:, 0, 0] = 0.6
+        result = attention_diagnostics(concentrated, np.array([0, 0, 0, 1]))
+        self.assertFalse(result['spatial_near_uniform'])
+        self.assertFalse(result['temporal_near_uniform'])
+        np.testing.assert_allclose(result['spatial_normalized_entropy'], 0)
+        with self.assertRaises(ValueError):
+            attention_diagnostics(np.zeros((4, 3, 7)), np.full(4, 0.25))
+
+    def test_error_probes_cover_classes_and_scenes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            vis = RoadTrainingVisualizer(temporary, records(), NAMES, error_samples=3)
+            errors = [{'sample_token': str(i), 'target': target, 'scene_name': scene}
+                      for i, (target, scene) in enumerate(((4, 'a'), (4, 'a'), (4, 'a'),
+                                                         (3, 'b'), (2, 'c')))]
+            self.assertEqual(vis._error_probes(errors), ['0', '3', '4'])
+            vis.error_samples = 4
+            self.assertEqual(vis._error_probes(errors), ['0', '3', '4', '1'])
+            vis.error_samples = 0
+            self.assertEqual(vis._error_probes(errors), [])
+
     def test_fixed_probes_cover_present_classes_and_are_stable(self):
         with tempfile.TemporaryDirectory() as temporary:
             vis = RoadTrainingVisualizer(temporary, records(), NAMES)
@@ -93,6 +122,58 @@ class VisualizerTests(unittest.TestCase):
             self.assertEqual(len((vis.output_dir / 'history.jsonl').read_text(encoding='utf-8').splitlines()), 2)
             for filename in ('curves.png', 'confusion_matrix.png', 'reliability.png'):
                 self.assertGreater((epoch / filename).stat().st_size, 1000)
+
+    def test_config_snapshot_update_counts_and_completed_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = {'training': {'batch_size': 190}}
+            vis = RoadTrainingVisualizer(temporary, records(), NAMES, attention_samples=0,
+                                         error_samples=0, run_config=config)
+            config['training']['batch_size'] = 10
+            targets = np.eye(5)[[2, 3, 4]]
+            logits = targets * 10
+            summary = vis.on_epoch_end(1, logits, targets, [r['sample_token'] for r in records()],
+                                      metrics(logits, targets),
+                                      {'train_loss': 0.1, 'train_acc': 1, 'samples_per_sec': 10,
+                                       'optimizer_steps': 1, 'optimizer_steps_per_epoch': 1},
+                                      None, None, None, None)
+            self.assertTrue(any('one optimizer update' in s for s in report_findings(summary)))
+            vis.finish('epoch_limit')
+            metadata = json.loads((vis.output_dir / 'run.json').read_text(encoding='utf-8'))
+            self.assertEqual(metadata['run_config']['training']['batch_size'], 190)
+            self.assertEqual(metadata['status'], 'completed')
+            self.assertEqual(metadata['stop_reason'], 'epoch_limit')
+            page = (vis.output_dir / 'index.html').read_text(encoding='utf-8')
+            self.assertIn('Latest epoch', page)
+            self.assertIn('Open latest report', page)
+            self.assertIn('completed', page)
+            epoch_page = (vis.output_dir / 'epoch_0001/index.html').read_text(encoding='utf-8')
+            self.assertIn('<td>0</td><td>n/a</td><td>n/a</td><td>n/a</td>', epoch_page)
+
+    def test_refresh_preserves_original_report_and_predictions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            vis = RoadTrainingVisualizer(temporary, records(), NAMES, attention_samples=0, error_samples=0)
+            targets = np.eye(5)[[2, 3, 4]]
+            logits = targets * 10
+            vis.on_epoch_end(1, logits, targets, [r['sample_token'] for r in records()],
+                             metrics(logits, targets),
+                             {'train_loss': 0.1, 'train_acc': 1, 'samples_per_sec': 10},
+                             None, None, None, None)
+            # The first released report format did not record bins or run metadata.
+            settings_path = vis.output_dir / 'settings.json'
+            settings = json.loads(settings_path.read_text(encoding='utf-8'))
+            settings.pop('bins')
+            settings_path.write_text(json.dumps(settings), encoding='utf-8')
+            (vis.output_dir / 'run.json').unlink()
+            original = (vis.output_dir / 'index.html').read_bytes()
+            original_metrics = (vis.output_dir / 'epoch_0001/metrics.json').read_bytes()
+            reviewed = refresh_reports(vis.output_dir)
+            self.assertEqual((vis.output_dir / 'index.html').read_bytes(), original)
+            self.assertEqual((vis.output_dir / 'epoch_0001/metrics.json').read_bytes(), original_metrics)
+            self.assertEqual((reviewed / 'epoch_0001/predictions.jsonl').read_bytes(),
+                             (vis.output_dir / 'epoch_0001/predictions.jsonl').read_bytes())
+            self.assertIn('reviewed_archive', (reviewed / 'index.html').read_text(encoding='utf-8'))
+            with self.assertRaises(ValueError):
+                refresh_reports(vis.output_dir, vis.output_dir)
 
     def test_single_frame_attention_renderer(self):
         with tempfile.TemporaryDirectory() as temporary:

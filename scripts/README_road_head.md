@@ -87,7 +87,8 @@ Each `epoch_XXXX/` contains:
 - `cases/*.png`: original model-input frames, spatial attention overlays,
   temporal query weights, and class probabilities. Fixed probes are selected
   across represented classes and stay identical across epochs. Up to three
-  most confident mistakes are also rendered; overlapping selections reuse one
+  mistakes are also rendered, covering different target classes and scenes
+  after selecting the most confident error; overlapping selections reuse one
   forward pass. Each case also saves raw attention in `.npz` and metadata in
   `.json`.
 - `index.html`: links to files, per-class/per-scene tables, mistake pairs,
@@ -96,8 +97,14 @@ Each `epoch_XXXX/` contains:
 Attention is the road head's spatial/temporal query attention averaged across
 heads; it is not class-conditioned attribution or VGGT attention rollout.
 Heatmaps exclude the optional camera token and align to the exact preprocessed
-image grid. All frames in one case share a raw-weight color scale, shown on the
-colorbar. Full evaluation predictions supply the case labels/probabilities;
+image grid. Colors show patch weight divided by that frame's mean patch weight;
+1 means uniform. All frames in a case share a color scale. Overlay opacity is
+proportional to deviation from uniform, so nearly constant weights do not tint
+the entire image or create false hotspots. Case JSON and epoch metrics include
+normalized attention entropy and maximum relative deviation; the near-uniform
+threshold is 5%. Temporal weights show six decimals and a uniform baseline.
+Raw, unmodified weights remain available in NPZ files.
+Full evaluation predictions supply the case labels/probabilities;
 the separate `debug=True` attention pass can have minor numerical differences,
 so its probabilities are saved separately in case metadata. Soft-label error
 counts and confusion matrices use the target argmax, matching existing metrics.
@@ -108,6 +115,36 @@ with gradients disabled; rank 1 waits for rank 0 to complete evaluation/reports.
 Reduce `--vis-attention-samples` / `--vis-error-samples` to bound the additional
 time and disk usage, or use `--no-vis` to disable the component. Matplotlib is
 already included in the road-head dependencies.
+
+Each new run also saves its own configuration snapshot and timestamps in
+`run.json`. The overview shows the latest and best epoch, diagnostics, and a
+compact epoch table before the figures. Missing target classes show `n/a` in
+the metric table. The trainer records optimizer update counts, and curves use
+updates as the x-axis when those counts are available. With 378 samples, two
+GPUs, and batch size 190 per GPU, an epoch contains just one update; 30 epochs
+then provide only 30 updates. A smaller batch or more epochs is needed to
+compare against experiments that performed hundreds of updates.
+
+A report directory belongs to its original run. Starting another training run
+with `--no-vis` does not update that report. The shared parent `config.yaml`
+may be overwritten by another run, so it is not a reliable historical snapshot.
+
+### Refresh an existing report without retraining
+
+```bash
+python scripts/road_training_visualizer.py \
+  --refresh runs/road_overfit_mini_ddp/visualizations/run_20260929_154417_466111 \
+  --config runs/road_overfit_mini_ddp/config.yaml
+```
+
+This writes a separate `reviewed/index.html` using saved predictions and raw
+attention. It runs on CPU without loading VGGT or changing the original report,
+weights, or training process. For old reports without a snapshot, `--config`
+supplies image preprocessing settings only; the report explicitly marks the
+original training configuration as unavailable. Reconstructed image shapes
+must match the saved shapes. Historical attention is not recomputed from a
+different model checkpoint. Only saved attention cases are available; diverse
+case selection applies to future training runs.
 
 `outputs/road_head` also contains sample-keyframe templates, Qwen proposals,
 visual audit notes, and their validation summary. Run

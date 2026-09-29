@@ -205,11 +205,13 @@ def main():
                   f"aggregator={sum(p.numel() for p in block_params):,}", flush=True)
             print("Train and evaluation use the SAME samples; metrics measure memorization.",
                   flush=True)
+            print(f"Optimizer updates per epoch={len(train_loader)}; "
+                  f"planned updates={len(train_loader) * args.epochs}", flush=True)
             if not args.no_vis:
                 visualizer = RoadTrainingVisualizer(
                     output_dir, records, ROAD_CLASSES, every=args.vis_every,
                     attention_samples=args.vis_attention_samples, error_samples=args.vis_error_samples,
-                    bins=cfg["calibration"]["ece_bins"], target_nll=args.target_nll)
+                    bins=cfg["calibration"]["ece_bins"], target_nll=args.target_nll, run_config=cfg)
                 print(f"Visualizations: {visualizer.output_dir / 'index.html'}", flush=True)
         if world_size > 1:
             dist.barrier()
@@ -266,6 +268,8 @@ def main():
                         {"train_loss": (stats[0] / stats[2]).item(),
                          "train_acc": (stats[1] / stats[2]).item(),
                          "samples_per_sec": (stats[2] / seconds).item(),
+                         "optimizer_steps": global_step,
+                         "optimizer_steps_per_epoch": len(train_loader),
                          "gpu0_cumulative_peak_GiB": memory_gib},
                         model, eval_loader.dataset, device, args.amp)
                     print(f"vis epoch={epoch} errors={summary['error_count']} "
@@ -287,6 +291,8 @@ def main():
                 if rank == 0:
                     print("Memorization target reached; stopping early.", flush=True)
                 break
+        if visualizer is not None:
+            visualizer.finish('memorization_target' if stop else 'epoch_limit')
         print(f"rank={rank} peak_gpu_memory_GiB="
               f"{torch.cuda.max_memory_allocated(device) / 2**30:.2f}", flush=True)
     finally:

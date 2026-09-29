@@ -37,15 +37,20 @@ def data_splits(cfg):
     return train, val, prior, stats
 
 
-def loader(records, cfg, train=False, sampler=None):
+def loader(records, cfg, train=False, sampler=None, num_workers=None):
+    training = cfg['training']
+    workers = training['num_workers'] if num_workers is None else num_workers
+    options = {'num_workers': workers,
+               'pin_memory': training.get('pin_memory', True),
+               'persistent_workers': train and workers > 0 and training.get('persistent_workers', True)}
+    if workers > 0:
+        options['prefetch_factor'] = training.get('prefetch_factor', 1)
     return DataLoader(NuScenesRoadSequenceDataset(records, cfg['data']['preprocess_mode'],
                       cfg['data'].get('color_jitter', 0) if train else 0,
                       cfg['data'].get('image_width', 518)),
                       batch_size=cfg['training']['batch_size'], shuffle=train and sampler is None,
                       sampler=sampler,
-                      num_workers=cfg['training']['num_workers'], pin_memory=True,
-                      persistent_workers=cfg['training']['num_workers'] > 0,
-                      collate_fn=road_collate)
+                      collate_fn=road_collate, **options)
 
 
 def road_collate(items):

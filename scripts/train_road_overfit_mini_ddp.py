@@ -8,6 +8,7 @@ The resulting accuracy is a memorization diagnostic, not generalization.
 """
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -32,10 +33,11 @@ from scripts.road_common import (  # noqa: E402
     loader,
     loss_fn,
     make_model,
+    metrics as classification_metrics,
     parameter_groups,
     place_model,
-    save_plots,
 )
+from scripts.road_training_visualizer import RoadTrainingVisualizer  # noqa: E402
 from training.data.nuscenes_road_dataset import class_counts  # noqa: E402
 from vggt.heads.road_probability_head import ROAD_CLASSES  # noqa: E402
 
@@ -94,7 +96,9 @@ def main():
     parser.add_argument("--output-dir", default="runs/road_overfit_mini_ddp")
     parser.add_argument("--batch-size", type=int, default=4,
                         help="Batch size per GPU; global batch = batch-size * GPU count")
-    parser.add_argument("--workers", type=int, default=4, help="DataLoader workers per GPU")
+    parser.add_argument("--workers", type=int, default=2, help="Training DataLoader workers per GPU")
+    parser.add_argument("--eval-workers", type=int, default=0, help="Evaluation workers on rank 0")
+    parser.add_argument("--prefetch-factor", type=int, default=1, help="Prefetched batches per worker")
     parser.add_argument("--image-width", type=int, default=518)
     parser.add_argument("--last-blocks", type=int, default=4,
                         help="Unfreeze this many final frame/global aggregator blocks")
@@ -106,9 +110,19 @@ def main():
     parser.add_argument("--class-weights", default="1,1,1,8,2",
                         help="Five positive CE weights; use 1,1,1,1,1 for original loss")
     parser.add_argument("--target-nll", type=float, default=0.05)
+    parser.add_argument("--no-vis", action="store_true", help="Disable the per-epoch visualization component")
+    parser.add_argument("--vis-every", type=int, default=1,
+                        help="Render attention every N epochs; metrics and error analysis remain per-epoch")
+    parser.add_argument("--vis-attention-samples", type=int, default=3,
+                        help="Fixed attention probes, selected across classes")
+    parser.add_argument("--vis-error-samples", type=int, default=3,
+                        help="Most confident mistakes to visualize per attention epoch")
     args = parser.parse_args()
-    if args.batch_size < 1 or args.workers < 0 or args.epochs < 1 or args.last_blocks < 0:
-        parser.error("Invalid batch size, worker count, epoch count, or last-block count")
+    if (args.batch_size < 1 or args.workers < 0 or args.eval_workers < 0
+            or args.prefetch_factor < 1 or args.epochs < 1 or args.last_blocks < 0):
+        parser.error("Invalid batch size, worker count, prefetch factor, epoch count, or last-block count")
+    if args.vis_every < 1 or min(args.vis_attention_samples, args.vis_error_samples) < 0:
+        parser.error("Invalid visualization interval or sample count")
     weights = [float(value) for value in args.class_weights.split(",")]
     if len(weights) != 5 or any(not np.isfinite(value) or value <= 0 for value in weights):
         parser.error("--class-weights needs five positive finite numbers")
@@ -131,6 +145,7 @@ def main():
             "last_blocks": args.last_blocks,
             "batch_size": args.batch_size,
             "num_workers": args.workers,
+            "prefetch_factor": args.prefetch_factor,
             "head_lr": args.head_lr,
             "backbone_lr": args.backbone_lr,
             "weight_decay": args.weight_decay,
@@ -138,6 +153,9 @@ def main():
             "accum_steps": 1,
             "output_dir": args.output_dir,
         })
+        cfg["visualization"] = {"enabled": not args.no_vis, "attention_every": args.vis_every,
+                                "attention_samples": args.vis_attention_samples,
+                                "error_samples": args.vis_error_samples}
         seed = cfg["training"]["seed"]
         random.seed(seed + rank)
         np.random.seed(seed + rank)
@@ -158,7 +176,7 @@ def main():
         sampler = DistributedSampler(base.dataset, num_replicas=world_size, rank=rank,
                                      shuffle=True, drop_last=False) if world_size > 1 else None
         train_loader = loader(records, cfg, True, sampler=sampler)
-        eval_loader = loader(records, cfg) if rank == 0 else None
+        eval_loader = loader(records, cfg, num_workers=args.eval_workers) if rank == 0 else None
 
         model = make_model(cfg, prior)
         model = place_model(model, device, cfg)
@@ -175,6 +193,7 @@ def main():
                                                find_unused_parameters=False)
                        if world_size > 1 else model)
         output_dir = Path(args.output_dir)
+        visualizer = None
         if rank == 0:
             output_dir.mkdir(parents=True, exist_ok=True)
             (output_dir / "config.yaml").write_text(
@@ -186,6 +205,12 @@ def main():
                   f"aggregator={sum(p.numel() for p in block_params):,}", flush=True)
             print("Train and evaluation use the SAME samples; metrics measure memorization.",
                   flush=True)
+            if not args.no_vis:
+                visualizer = RoadTrainingVisualizer(
+                    output_dir, records, ROAD_CLASSES, every=args.vis_every,
+                    attention_samples=args.vis_attention_samples, error_samples=args.vis_error_samples,
+                    bins=cfg["calibration"]["ece_bins"], target_nll=args.target_nll)
+                print(f"Visualizations: {visualizer.output_dir / 'index.html'}", flush=True)
         if world_size > 1:
             dist.barrier()
 
@@ -222,10 +247,10 @@ def main():
             seconds = time.perf_counter() - started
 
             if rank == 0:
-                logits, targets, _ = collect(model, eval_loader, device, args.amp,
-                                             debug_first=epoch == 1)
-                metrics = save_plots(logits, targets, 1.0, output_dir,
-                                     cfg["calibration"]["ece_bins"])
+                logits, targets, samples = collect(model, eval_loader, device, args.amp,
+                                                   debug_first=epoch == 1)
+                metrics = classification_metrics(logits, targets, bins=cfg["calibration"]["ece_bins"])
+                (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
                 memory_gib = torch.cuda.max_memory_allocated(device) / 2**30
                 print(f"epoch={epoch} train_loss={stats[0] / stats[2]:.4f} "
                       f"train_acc={stats[1] / stats[2]:.4f} "
@@ -234,6 +259,19 @@ def main():
                       f"samples_per_sec={stats[2] / seconds:.1f} "
                       f"gpu0_peak_GiB={memory_gib:.2f} "
                       f"confusion={metrics['confusion_matrix']}", flush=True)
+                if visualizer is not None:
+                    vis_started = time.perf_counter()
+                    summary = visualizer.on_epoch_end(
+                        epoch, logits, targets, samples, metrics,
+                        {"train_loss": (stats[0] / stats[2]).item(),
+                         "train_acc": (stats[1] / stats[2]).item(),
+                         "samples_per_sec": (stats[2] / seconds).item(),
+                         "gpu0_cumulative_peak_GiB": memory_gib},
+                        model, eval_loader.dataset, device, args.amp)
+                    print(f"vis epoch={epoch} errors={summary['error_count']} "
+                          f"high_confidence_errors={summary['high_confidence_errors']} "
+                          f"present_class_f1={summary['macro_f1_present']:.4f} "
+                          f"seconds={time.perf_counter() - vis_started:.1f}", flush=True)
                 if metrics["nll"] < best_nll:
                     best_nll = metrics["nll"]
                     save_best(model, cfg, prior, output_dir / "best.pt", epoch,

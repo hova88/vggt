@@ -25,7 +25,7 @@ same weight as a full batch. For batch sizes 4 and 1, the original gradient is
 `(4 * mean_gradient_4 + mean_gradient_1) / 5`.
 
 The revised loop weights loss by `batch_size / window_capacity`, then multiplies
-unscaled accumulated gradients by `window_capacity / window_samples`. The
+accumulated gradients by `window_capacity / window_samples` before unscaling. The
 product gives each sample weight `1 / window_samples`. The common denominator
 keeps the accumulated loss near the scale of a mean loss for FP16 scaling.
 The final window uses its actual number of samples without retaining several
@@ -144,8 +144,9 @@ batch's small logits to CPU. No measured speedup is asserted.
 
 ## Deliberate limits and future runtime checks
 
-This is a single-device trainer. The separate overfit DDP experiment retains
-its own behavior. AdamW uses fixed learning rates, and weight decay still
+The trainer supports direct single-device execution and torchrun CUDA DDP.
+The separate overfit DDP experiment retains its own behavior. AdamW uses fixed
+learning rates, and weight decay still
 applies to every parameter in each group, including biases and normalization
 parameters. Introducing a scheduler or decay exclusions would change the
 optimization recipe and should be evaluated with an actual experiment.
@@ -168,3 +169,231 @@ microbatch sizes 4 and 1; exercise a short final accumulation window; verify
 that a skipped FP16 update does not advance the step count; reload a selected
 checkpoint in both finetune modes; and inspect logged throughput and artifact
 consistency. None of these checks was executed during this edit.
+
+## DDP extension reviewed against the committed baseline
+
+The baseline for this extension is commit `06a9c1e` (training comments, log
+interval, and static review). Commit `16735a3` already changed the shared model
+builder to allocate VGGT on the current rank's CUDA device and avoid a full
+FP32 host allocation per worker. The existing overfit DDP script demonstrates
+the repository's model wrapper and rank-0 evaluation approach; its same-sample
+memorization objective and stopping rule are not imported into this trainer.
+
+The baseline `train_road_head.py` was single-device code. Running that version
+through torchrun would start independent trainers, leave them on the default
+GPU, and allow simultaneous writes to the same artifacts. A launch command
+alone therefore could not make the committed implementation correct for DDP.
+The extension adds actual distributed initialization, training synchronization,
+data sharding, collective metrics, and exclusive artifact ownership.
+
+### Launch and device ownership
+
+Run from the repository root on a host with two visible CUDA GPUs:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
+  scripts/train_road_head.py \
+  --config configs/road_head_nuscenes_small.yaml \
+  --pretrained /model/vggt-1b.pt \
+  --log-interval 20
+```
+
+`distributed_setup` reads world size, global rank, and local rank from the
+launcher environment. It sets the CUDA device before process-group operations
+or `make_model`. The local device index is relative to `CUDA_VISIBLE_DEVICES`;
+global rank is used for data sharding and artifact ownership. Both historical
+local-rank CLI spellings are accepted and checked against the environment.
+Multi-process runs initialize NCCL through `env://`; direct Python execution
+retains single-GPU/CPU support. These launcher conventions match
+[PyTorch's torchrun documentation](https://docs.pytorch.org/docs/2.14/elastic/run.html).
+
+Every GPU stores a full model replica. DDP does not allow a model that is too
+large for one GPU to fit by spreading its parameters across devices. DDP's
+constructor also performs initial parameter synchronization; for this model,
+that includes a substantial one-time backbone communication cost. The shared
+builder's per-rank allocation improvement remains in use.
+
+### Data partition and collective alignment
+
+All ranks load the same scene-disjoint records. A SHA-256 fingerprint covering
+configuration, ordered train/validation records, and `--max-steps` is gathered
+before constructing DDP. Disagreement raises on every rank. This catches
+inconsistent split order, labels, paths, configuration, and stopping settings;
+it cannot verify image bytes on different hosts.
+
+Training uses `DistributedSampler` with the common split seed and
+`drop_last=False`. `set_epoch(epoch)` changes the shuffle each epoch. For N
+records and W ranks, each rank receives `ceil(N / W)` indices. Total sampling
+is W times that count, so up to W - 1 positions repeat records when padding is
+necessary. The shared DataLoader disables its own shuffle when a sampler is
+provided. These semantics follow the
+[DistributedSampler contract](https://docs.pytorch.org/docs/2.14/data.html#torch.utils.data.distributed.DistributedSampler).
+
+Because every rank has the same sampled count and batch size, ranks have equal
+batch counts and equal-sized final microbatches. Their accumulation boundaries,
+logging collectives, and stopping checks therefore occur in the same order.
+A sampler producing uneven batch counts must not replace this sampler without
+also redesigning collective alignment and gradient normalization.
+
+With N = 5, W = 2, batch size 2, and accumulation 2, padding yields 6 sampled
+positions, 3 per rank. Each rank sees batches of size 2 and 1. There is one
+optimizer update using 6 sampled sequences, even though the nominal maximum
+batch capacity is 8. Startup logs expose the extra sampled position. Training
+loss/accuracy and CSV sample counts describe the sampled stream, including
+repeats; validation describes the original unpadded validation records.
+
+### Accumulation and gradient normalization proof
+
+For a window, let C be the nominal capacity on each rank, n its actual sample
+count, and g(r, j) the unscaled per-sample gradient. Both C and n are equal across
+ranks because of the sampler and identical loader settings. Let S be the shared
+FP16 scale, or 1 when scaling is disabled. Before correction, the synchronized
+DDP gradient is:
+
+```text
+(S / (W * C)) * sum over ranks r and window samples j of g(r, j)
+```
+
+Multiplying by `C / n` and unscaling by S gives:
+
+```text
+(1 / (W * n)) * sum over ranks r and window samples j of g(r, j)
+```
+
+This is the mean gradient over the sampled global window. No extra division by
+world size is required: standard DDP already averages gradients. The correction
+is now applied before `scaler.unscale_`, so the scaler's finite check also sees
+any overflow introduced by that correction. Clipping still follows unscaling.
+
+For all nonfinal microbatches in a window, `no_sync()` encloses both forward and
+backward. The final microbatch runs normally, synchronizing the accumulated
+gradients. The condition explicitly includes the last loader batch, so an
+incomplete final window is synchronized and updated. These choices follow
+[PyTorch's DDP no_sync contract and gradient reduction behavior](https://github.com/pytorch/pytorch/blob/v2.3.1/torch/nn/parallel/distributed.py).
+
+The proof concerns sample weighting and gradient reduction. Separate dropout
+masks, different samples from sampler padding, and floating-point reduction
+order mean it is not a claim of identical results to the original single-GPU
+training run. Learning rates remain as configured; increasing world size does
+not implicitly multiply learning rates.
+
+### Trainable parameters and model state
+
+The complete `VGGTRoadClassifier` is wrapped in DDP. The optimizer retains raw
+parameter references, which remain valid after wrapping. In `head_only`, only
+the head contributes trainable parameters, and the classifier's `train()`
+override keeps the aggregator in eval mode. In `last_blocks`, both the head and
+selected frame/global blocks contribute gradients and are reduced by DDP.
+
+Source inspection traced the selected blocks through the final cached token
+features to `road_logits`, and traced the head's trainable projections, queries,
+position tensor, attention modules, and classifier to the loss. This supports
+`find_unused_parameters=False` for the current architecture. The aggregator
+uses `use_reentrant=False` for activation checkpointing, avoiding the additional
+DDP restrictions associated with reentrant checkpointing. Future changes that
+add conditional or unused trainable branches must revisit these assumptions.
+
+`broadcast_buffers=False` avoids per-forward buffer synchronization. The
+current buffers inspected here are fixed image normalization constants and a
+class prior derived identically on all ranks; they are not BatchNorm running
+statistics. Initial weights use the same seed and DDP synchronizes parameters.
+After wrapping, DDP runs use `seed + rank` for stochastic training and loader
+worker seeds, while retaining the common sampler/split seed. Single-device
+execution does not introduce this additional reseeding step.
+
+### AMP and common stopping decisions
+
+Every rank creates the same standard scaler from the verified AMP settings.
+After a synchronized accumulation boundary, ranks have the same reduced
+trainable gradients and identical normalization factors. They therefore make
+the same finite-gradient/overflow decision under the standard scaler policy.
+An FP16 skip increments `skipped_updates` but not `global_step`; a successful
+replica update advances one logical global step on every rank.
+
+`--max-steps` is checked only at complete accumulation boundaries. It counts
+global updates, not W times the number of replica optimizer calls. All ranks
+leave training at the same batch and perform the same final statistics
+collectives. Rank 0 then evaluates the entire validation split before the run
+exits. FP32/BF16 finite-norm errors occur after the DDP reduction as well.
+This reasoning assumes the standard DDP reducer/scaler, identical optimizer
+settings, and no custom communication hooks or independently restored states.
+
+### Training metrics and rank-0 validation
+
+Logging boundaries sum local loss totals, correct counts, and sample counts
+across ranks. Loss and accuracy use these sums, rather than averaging batch or
+rank means. Reduction operates on a new tensor, preserving each rank's local
+running totals for subsequent logs. Interval throughput uses total sampled
+sequences divided by the largest rank interval duration. Time, batch-wait time,
+and allocated memory use rank maxima; memory is not summed across devices.
+Epoch training duration similarly uses the largest rank duration.
+
+Validation is deliberately centralized. Rank 0 iterates the complete validation
+loader without a distributed sampler, and calls the raw model rather than the
+DDP wrapper. There are no validation-time collectives inside that forward while
+peers are waiting. Each validation record contributes once. NLL, confusion
+matrix, macro F1, Brier, and ECE come from the full prediction set; nonlinear
+metrics are never averaged across rank-local subsets.
+
+Only rank 0 selects the best model and owns its selection state. Workers do not
+need a copy of best NLL because it does not control subsequent training or early
+stopping. The per-epoch phase completion flag releases all ranks after
+validation and writes finish. On the next epoch, DDP `train()` restores training
+mode on every rank, including rank 0's model that was set to eval for validation.
+
+### Artifact ownership, workers, and failure handling
+
+Only rank 0 creates trainer output artifacts or opens CSV/log files. It saves
+the underlying module, preserving original state-dict key names without a
+`module.` prefix. The head and updated aggregator parameters retain the prior
+inference checkpoint contract. `args.json` and `summary.csv` now record world
+size, and the CSV also records global nominal batch size. Checkpoints remain
+inference artifacts rather than resumable optimizer snapshots.
+
+The collective order for a normal run is:
+
+1. Process-group initialization and rank-0 setup completion broadcast.
+2. Input fingerprint gather and DDP constructor synchronization.
+3. Rank-0 CSV-open completion broadcast.
+4. Training gradient reductions at update boundaries, statistics reductions
+   at progress boundaries, and final training-statistics reductions.
+5. Rank-0 full validation/artifact phase completion broadcast.
+6. Either the next epoch or coordinated exit after the step/epoch limit.
+
+The rank-0 phase context catches ordinary exceptions and broadcasts an error
+flag before raising, so healthy workers leave their wait with an explicit
+failure. Hard crashes, worker/data loading failures, CUDA failures, and broken
+collectives depend on torchrun's worker supervision and the configured process
+group timeout. The script does not promise recovery from these failures.
+`finally` destroys the process group without adding an unconditional cleanup
+barrier that could wait for a failed rank.
+
+Workers can wait throughout validation and plotting/checkpoint I/O, so the NCCL
+collective timeout is configurable through `training.ddp_timeout_seconds`
+(default: 3600). It must exceed the full expected rank-0 phase duration.
+Centralized validation uses one GPU while peers wait; this is a correctness
+and simplicity choice with a clear throughput cost for large validation sets.
+
+When DDP loader workers are enabled, the trainer defaults their context to
+`spawn` and permits `forkserver`, rejecting `fork`. The shared loader passes
+that context only when workers are nonzero. This follows
+[PyTorch's NCCL/DataLoader multiprocessing warning](https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html).
+Dataset classes/collation functions are defined at module scope and the trainer
+has a main guard, as required for spawned worker imports. Shared setup helpers
+still print from each rank; the trainer logger writes only from rank 0.
+
+### Static-review conclusion and execution limits
+
+The source implements one worker per GPU, aligned sampler/accumulation windows,
+standard averaged-gradient DDP updates, full-split validation, and exclusive
+rank-0 writes. The reviewed ordering and normalization support the intended
+DDP method for the current model and equal-length sampler. This conclusion is
+conditional on the inspected contracts, not an execution-based certification.
+
+No code execution was performed for this DDP extension: no torchrun launches,
+training, tests, imports, compilation, dependency installation, or performance
+measurements. Review consisted of source/diff inspection and a whitespace diff
+check. Remaining runtime checks include actual NCCL startup, both finetune
+modes with multiple accumulation windows, a padded dataset and short tail,
+FP16 skipped updates, checkpoint reload, spawned loader workers, rank-0 error
+propagation, and multi-node filesystem/device behavior if deployed that way.

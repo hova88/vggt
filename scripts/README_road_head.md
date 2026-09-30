@@ -31,6 +31,52 @@ python scripts/calibrate_road_head.py \
   --checkpoint outputs/road_head/best.pt
 ```
 
+For two GPUs, launch one process per visible GPU using `torchrun`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
+  scripts/train_road_head.py \
+  --config configs/road_head_nuscenes_small.yaml \
+  --pretrained /model/vggt-1b.pt \
+  --log-interval 20
+```
+
+For four GPUs, use `CUDA_VISIBLE_DEVICES=0,1,2,3` and `--nproc-per-node=4`.
+The script detects `WORLD_SIZE`, `RANK`, and `LOCAL_RANK` from torchrun; no
+`--ddp` flag is required. Direct `python` execution remains available on one
+GPU or CPU. Multi-process training uses CUDA/NCCL. Every process holds a full
+VGGT model on its own GPU; DDP distributes work, not model storage.
+
+`training.batch_size` and `training.num_workers` are **per rank**. The global
+nominal batch size is `batch_size * accum_steps * WORLD_SIZE`; for example,
+batch size 2 with accumulation 4 on two GPUs gives 16 sequences per update.
+Short final windows can contain fewer sequences. Learning rates are retained
+as configured, without automatic scaling when GPU count changes.
+
+All ranks build the same scene-disjoint split and verify configuration/record
+fingerprints, including the step limit. Training uses `DistributedSampler`
+with `set_epoch(epoch)`. When the training sample count is not divisible by
+world size, the sampler pads with repeated training samples to give every rank
+equal batch counts. Training metrics include these sampled repeats; their
+number is logged at startup. Each accumulation window synchronizes gradients
+only on its final microbatch through DDP `no_sync()`.
+
+Rank 0 validates the **entire validation split once** using the underlying
+model, and selects `best.pt` by that result. Other ranks wait for a completion
+flag before continuing. Validation has no padded samples and does not average
+per-rank F1/ECE values. Only rank 0 writes trainer logs, CSV, configuration,
+checkpoints, and plots. Shared data/model setup helpers still print on every
+rank. Set `training.ddp_timeout_seconds` (default: 3600) above the expected
+duration of rank-0 validation plus artifact writing. Ordinary rank-0 phase
+errors are signaled to peers; torchrun handles process failures.
+
+When DDP uses DataLoader workers, the trainer defaults
+`training.multiprocessing_context` to `spawn` and permits `forkserver` as an
+override. It rejects `fork` for that case because NCCL is not fork-safe. This
+worker setting is applied by the shared `loader` helper only when workers are
+enabled. Every rank needs access to the same configuration, checkpoint, and
+dataset paths; record fingerprints do not compare image file contents.
+
 Training uses disjoint scenes for train and validation; `best.pt` is selected
 by validation NLL. The checkpoint stores the road head, updated aggregator
 parameters, and local pretrained path. Evaluation and calibration reload that
@@ -47,7 +93,10 @@ entire validation split when training stops partway through an epoch.
 
 Progress messages show cumulative loss and accuracy, learning rates in
 head/backbone order, elapsed time, sequence throughput, and peak allocated CUDA
-memory. `Acc@1` is a percentage in the console and a fraction in saved metrics.
+memory. In DDP, loss/accuracy and sequence throughput cover all ranks; timing,
+data wait, and peak allocated memory use the maximum across ranks. Memory is
+the largest per-rank peak, not the sum of GPU allocations. `Acc@1` is a
+percentage in the console and a fraction in saved metrics.
 Training timing/rate use the interval since the previous log; validation uses
 averages since validation started. `Data` measures host time waiting for the
 next batch, excluding device transfer. A sequence contains several frames;

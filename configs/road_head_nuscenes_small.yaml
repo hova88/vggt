@@ -27,9 +27,9 @@ training:
   finetune_mode: head_only
   last_blocks: 2
   epochs: 30
-  batch_size: 1
+  batch_size: 1  # per rank; global nominal batch = batch_size * accum_steps * world_size
   accum_steps: 1
-  num_workers: 0
+  num_workers: 0  # per rank; DDP defaults worker multiprocessing_context to spawn
   head_lr: 0.0001
   backbone_lr: 0.000002
   weight_decay: 0.01
@@ -37,6 +37,7 @@ training:
   grad_clip: 1.0
   seed: 42
   log_interval: 20  # training/validation batches between progress messages
+  ddp_timeout_seconds: 3600  # includes waiting for rank-0 validation and artifact writes
   output_dir: outputs/road_head
 calibration:
   temperature_scaling: true

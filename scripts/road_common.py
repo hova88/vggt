@@ -45,6 +45,10 @@ def loader(records, cfg, train=False, sampler=None, num_workers=None):
                'persistent_workers': train and workers > 0 and training.get('persistent_workers', True)}
     if workers > 0:
         options['prefetch_factor'] = training.get('prefetch_factor', 1)
+        if training.get('multiprocessing_context') is not None:
+            # NCCL is not fork-safe. The DDP trainer selects spawn/forkserver
+            # when worker processes are enabled; other callers keep their default.
+            options['multiprocessing_context'] = training['multiprocessing_context']
     return DataLoader(NuScenesRoadSequenceDataset(records, cfg['data']['preprocess_mode'],
                       cfg['data'].get('color_jitter', 0) if train else 0,
                       cfg['data'].get('image_width', 518)),

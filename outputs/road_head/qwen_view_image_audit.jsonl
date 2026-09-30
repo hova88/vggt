@@ -1,0 +1,15 @@
+{"sample_token":"858a1ece22cf45d9bc71e42336604b78","scene":"scene-0916","flash_label":null,"max_label":null,"visual_assessment":"consistent_abstention","note":"停车区域内部通道；固定五类无合适类别。"}
+{"sample_token":"a19a80c905674faab7203a3a4e0f5246","scene":"scene-0916","flash_label":null,"max_label":null,"visual_assessment":"consistent_abstention","note":"两侧成排停车位，非明确公共主路。"}
+{"sample_token":"9150678870764c1b87a649a25939c61b","scene":"scene-0916","flash_label":null,"max_label":null,"visual_assessment":"consistent_abstention","note":"停车场或园区内部通道，五类均不适合。"}
+{"sample_token":"e63b83b436a0479db7362338cdfab118","scene":"scene-0916","flash_label":null,"max_label":null,"visual_assessment":"consistent_abstention","note":"停车区内部弯道，五类均缺乏依据。"}
+{"sample_token":"8e352d4a6c6f40c8ad4f10a3d2c3f158","scene":"scene-0916","flash_label":null,"max_label":null,"visual_assessment":"consistent_abstention","note":"停车区内部弯道，五类均缺乏依据。"}
+{"sample_token":"ed5fc18c31904f96a8f0dbb99ff069c0","scene":"scene-0061","flash_label":3,"visual_assessment":"plausible","note":"画面可见隔离的较窄通道；辅路提议有视觉依据，仍需地图核对。"}
+{"sample_token":"7d82aa0c679141d1a71733b85fdcd3ed","scene":"scene-1094","flash_label":3,"visual_assessment":"plausible","note":"与右侧较繁忙道路隔离的通道；辅路提议有视觉依据，仍需地图核对。"}
+{"sample_token":"c235638ed66145988d17f9d0601923f2","scene":"scene-0061","flash_label":4,"visual_assessment":"contradicted","note":"斑马线仍在自车前方，不能断定已位于交叉区域。"}
+{"sample_token":"700c1a25559b4433be532de3475e58a9","scene":"scene-0103","flash_label":4,"visual_assessment":"contradicted","note":"停止线和斑马线位于自车前方，路口中提议缺乏依据。"}
+{"sample_token":"ecd49e3c38624c77b8aac8df445d49ba","scene":"scene-0553","flash_label":4,"visual_assessment":"contradicted","note":"自车在横穿行人的斑马线前等待，尚未进入路口。"}
+{"sample_token":"dc4c80e8a1534ff8a3eb80307341161c","scene":"scene-1100","flash_label":4,"visual_assessment":"contradicted","note":"自车在路口线前静止；scene 约18秒内仅移动约1米。"}
+{"sample_token":"3ff58ee0fc4748d9895300f02114aa56","scene":"scene-1100","flash_label":4,"visual_assessment":"contradicted","note":"停止线仍在前方，自车未见进入交叉区域。"}
+{"sample_token":"134ae8a8f5c340f9894a414fc0966af4","scene":"scene-1100","flash_label":4,"visual_assessment":"contradicted","note":"横向通行的是其他车辆，自车停在路口前。"}
+{"sample_token":"dc53cf076d114df7bb59c2a0b3bc3154","scene":"scene-1100","flash_label":4,"visual_assessment":"contradicted","note":"模型理由甚至写明在路口前等待，与标签4矛盾。"}
+{"sample_token":"abf3d91d3c28407e80e3334fe89c03cb","scene":"scene-1100","flash_label":4,"visual_assessment":"contradicted","note":"末帧依然处于同一停车位置，模型声称越过停止线不获图像支持。"}

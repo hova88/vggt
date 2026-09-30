@@ -1,0 +1,501 @@
+{
+  "notice": "Model proposals only; agreement is not classification accuracy or ground truth.",
+  "flash_total": 374,
+  "flash_distribution": {
+    "2": 282,
+    "4": 67,
+    "3": 2,
+    "None": 23
+  },
+  "flash_abstained": 23,
+  "max_completed": 23,
+  "max_distribution_on_abstained": {
+    "None": 23
+  },
+  "agreement_on_flash_abstained": 23,
+  "comparisons": [
+    {
+      "sample_token": "d8251bbc2105497ab8ec80827d4429aa",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984237912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面左侧为带顶棚的公交站台，右侧路边停放多辆汽车，前方有行人横穿及隔离柱，路面标线（黄色折线）显示该区域为站点停靠区或内部通道。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路。当前场景特征明显为公交站/停车点附近的局部道路，缺乏连续通行的公共公路特征，无法合理归入高架、普通主路、辅路或路口类别，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于一处内部通道或停车场区域，左侧有带台阶的候车/休息亭及停放的摩托车，右侧为并排停放的私家车车位，前方有行人横穿及隔离护栏，缺乏公共主路的连续通行车道特征。",
+        "reason": "该场景具有明显的停车场内部通道或私人/场内车道特征（两侧分别为候车亭和停车位），不属于普通公共主路（main_road），也不符合高架、辅路或标准交叉路口的定义。根据规则，停车场内部通道或场内车道不能归入五类，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "048a45dd2cf54aa5808d8ccc85731d44",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984238412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面左侧有带顶棚的候车亭/站台及大量停放的摩托车，右侧为路边停车位，前方道路尽头有护栏阻挡（似断头路或内部通道），无连续公共通行车道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路。当前场景明显属于公交枢纽站内部、停车场或封闭园区道路，不符合 elevated_up/down、main_road 或 side_road 的定义，且未处于公共道路交叉口内，故返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于带有黄色停车/禁停标线的铺装区域，左侧有密集停放的摩托车和防撞柱，右侧为一排停放的私家车，前方有金属护栏阻断通行，整体呈现停车场或内部通道特征，无连续通行的公共道路车道线。",
+        "reason": "该场景明显属于停车场内部通道或私人/场内车道，缺乏普通公共主路（main_road）的连续通行车道和公路通行性质，也不符合高架、辅路或交叉路口的定义。根据规则‘停车场内部通道、私人出入口或场内车道不是公共主路；若不能合理归入五类，返回 null’，故判定为 null。"
+      }
+    },
+    {
+      "sample_token": "858a1ece22cf45d9bc71e42336604b78",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984238912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面左侧可见公交站台候车亭及台阶，路边停放多辆摩托车，右侧为路缘石和草坪，前方有护栏封闭道路尽头。",
+        "reason": "自车位于公交首末站、停车场或私人屋苑内部通道区域，属于非公共通行性质的内部道路，不符合普通公共主路（main_road）的定义，也不符合高架或路口特征，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于停车场内部通道，右侧有并排停放的私家车，左侧有摩托车停放区、隔离柱及行人，地面为场内标线，无公共道路连续通行车道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路，不能归入 main_road；同时场景明显不属于高架、辅路或公共路口交叉区域，因此无法合理归入五类，返回 null。"
+      }
+    },
+    {
+      "sample_token": "372725a4b00e49c78d6d0b1c4a38b6e0",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984239412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面右侧可见多辆汽车垂直停放，左侧有摩托车停放区及台阶，路面为停车场内部通道。",
+        "reason": "根据规则，停车场内部通道不属于公共道路，不能归入主路、辅路或路口等类别，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于停车场内部，左侧停放多辆摩托车，右侧停放多辆私家车，前方有金属护栏和绿化带阻挡，无连续通行的公共道路车道线。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。当前场景明显为停车场区域，不具备公共道路（main_road/side_road）的连续通行特征，也不属于高架或路口，无法合理归入给定的五类道路状态，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "61a7bd24f88a46c2963280d8b13ac675",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984239912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车位于一个内部场地，前方有停车位标线、防撞护栏及多辆斜向停放的汽车和摩托车。",
+        "reason": "根据规则，停车场内部通道或场内车道不属于公共主路（main_road），且场景明显为停车区域而非高架、辅路或路口，因此无法归入给定的五类道路状态中，应返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于停车场内部，前方有并排停放的私家车（蓝色、银色等）和一辆摩托车，地面可见停车位标线，尽头为金属护栏与绿化带，无公共道路通行特征。",
+        "reason": "该场景为停车场内部通道/停车区域，属于规则明确排除的‘停车场内部通道、私人出入口或场内车道’，不具备公共主路、辅路、高架或路口特征，无法合理归入五类，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "609d5177362340458a3bfd4949cd1e64",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984240412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面右侧可见多辆汽车（蓝色、银色等）整齐斜向停放在划定的停车位内，左侧有摩托车停放区及防撞柱，路面为停车场内部通道。",
+        "reason": "根据规则，停车场内部通道不属于公共主路或辅路，且无法归入高架或路口类别，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于停车场内部，前方为一排垂直停放的私家车（蓝色轿车、银色车等）及摩托车，地面可见停车位标线，后方有绿化隔离带和树木，无公共道路通行特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。当前场景明确为停车场区域，不属于高架、主路、辅路或路口中的任何一类，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "b1303058fa624645b753d7283d70de45",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984240912467.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面右侧及前方可见多辆汽车（蓝色轿车、银色SUV等）呈斜列式停放，地面有停车位划线特征，自车处于停车场内部通道。",
+        "reason": "根据严格规则，停车场内部通道不属于公共道路范畴，不能归入高架、主路、辅路或路口中的任何一类，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车位于一排垂直停放的私家车（蓝色轿车、银色MPV、蓝色Mini、白色SUV）前方，地面可见停车位标线及挡车器，属于停车场内部区域。",
+        "reason": "根据规则，停车场内部通道或场内车道不属于公共主路（main_road），且无法合理归入高架、辅路或路口等其他四类，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "a19a80c905674faab7203a3a4e0f5246",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984241412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面中自车前方及侧方为成排停放的车辆（轿车、SUV），地面可见停车位划线，背景有绿化带和护栏，无公共道路通行特征。",
+        "reason": "根据严格规则，停车场内部通道或场内车道不属于公共主路，且无法合理归入高架、路口或辅路等类别，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车正沿着一排垂直停放的私家车（蓝色轿车、银色MPV、Mini、白色SUV等）行驶，地面可见停车位标线，场景为典型的露天停车场内部通道。",
+        "reason": "根据规则，停车场内部通道或场内车道不属于公共主路（main_road），且无法合理归入高架、辅路或路口等其他四类，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "b6c420c3a5bd4a219b1cb82ee5ea0aa7",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984241912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面左侧连续停放多辆汽车，地面有红色“RESERVED”字样停车位标线，右侧车道有直行箭头，整体呈现停车场或内部专用通道特征。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且无高架、路口等特征，无法合理归入给定的五类道路状态中，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在带有白色直行箭头的铺装路面上，但道路左侧紧邻一排垂直停放的私家车（可见'RESERVED'字样）及绿化树木，无标准公共道路标线或隔离设施，整体环境特征符合停车场内部通道或园区私有车道。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且场景明显不具备高架、路口或公共辅路特征。因无法合理归入给定的五类公共道路状态，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "06be0e3b665c44fa8d17d9f4770bdf9c",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984243912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在一条两侧停满车辆的狭窄通道上，路面有直行箭头标识，但无标准车道分界线，且道路尽头连接大面积露天停车区域。",
+        "reason": "根据严格规则，停车场内部通道不属于公共主路（main_road）。画面显示该区域具有明显的停车场站特征（密集停放车辆、非市政道路标线），因此不能归类为普通道路或辅路，应返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在两侧停满车辆的内部通道上，路面有直行箭头但无公共道路标线，环境特征符合停车场或园区内部车道。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。该场景明显为停车区域内部道路，不属于高架、主路、辅路或路口中的任何一类，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "e174cb43655f49dab7ffa27b973670e3",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984242912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条两侧停满车辆的内部通道上，路面有直行箭头和红色禁停标线，右侧为密集的斜向停车位，左侧为路边停车带及建筑。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且该场景明显不具备高架、路口或城市辅路的特征，无法合理归入给定的五个类别中，因此返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在两侧停满车辆的通道内，路面有直行箭头，但周围环境明显为停车场或园区内部道路，非公共公路。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。该场景符合停车场/内部通道特征，无法合理归入高架、主路、辅路或路口五类，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "6ff9723a60bf4e14b328b3b19f04dc32",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984243412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "道路两侧均为垂直/斜向停车位，停满车辆，路面有红色禁停标线及白色导向箭头，无公共道路典型特征。",
+        "reason": "自车行驶在停车场内部通道上，两侧密集的车辆停放表明这是停车区域而非公共通行道路。根据规则，停车场内部通道不属于五类中的任何一类（非高架、非主路、非辅路、非路口），因此返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在两侧停满车辆的通道内，路面有红色停车位标记和导向箭头，周围为树木和坡地，无公共道路标线或路牌，呈现典型的停车场内部通道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路，且不能合理归入高架、主路、辅路或路口五类中的任何一类，因此返回 null。最容易混淆的是 main_road，但此处缺乏公共道路属性，明确属于场内车道。"
+      }
+    },
+    {
+      "sample_token": "55c258972acb4300a3a6077a531ab050",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984245412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "道路两侧为密集的斜列式停车位，停满车辆，路面有红色禁停标线及直行箭头，无公共道路典型特征。",
+        "reason": "自车行驶在停车场内部通道上，两侧均为停车区域而非公共道路路肩或辅路分隔带。根据规则，停车场内部通道不属于公共主路（main_road），也不符合高架、路口或辅路定义，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在两侧停满车辆的内部通道上，路面有直行箭头但无标准公共道路标线，周围为密集的斜列式停车位和绿化坡地，具有典型的停车场或园区内部车道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road）。该场景明显为封闭或半封闭的停车区域内部道路，不具备普通公共道路的通行性质，且无法合理归入高架、辅路或路口等其他类别，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "8573a885a7cb41d185c05029eeb9a54e",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984244912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在一条两侧停满车辆的内部通道上，路面有红色禁停标记（No Parking），前方为T型路口或停车场出口。",
+        "reason": "根据规则，'停车场内部通道、私人出入口或场内车道不是公共主路；若不能合理归入五类，返回 null'。画面显示该道路两侧均为密集的停车位，且地面标线特征符合停车场内部道路而非公共通行道路，因此不属于 main_road 或其他类别。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在两侧停满车辆的内部通道上，路面有红色停车位编号标记，无公共道路标线，属于停车场或园区内部车道。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路，且无法合理归入高架、主路、辅路或路口这五类公共道路状态，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "44237858a539457da65822bfcf58c414",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984245912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条两侧停满车辆（如左侧货车、右侧多辆轿车）的内部通道上，路面有直行箭头标识，但环境特征明显为停车场或私人区域内部道路。",
+        "reason": "根据严格规则，'停车场内部通道、私人出入口或场内车道不是公共主路；若不能合理归入五类，返回 null'。该场景不具备公共道路（main_road）的通行性质，也不符合高架、辅路或路口的定义，因此判定为 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在两侧停满车辆的内部通道上，路面有直行箭头但无标准公共道路标线，周围为密集的斜列式停车位及绿化坡地，具有典型的停车场或园区内部车道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且无法合理归入高架、辅路或路口等其他类别，因此返回 null。最容易混淆的类别是 main_road，但此处缺乏公共道路的连续通行性质和标准标线，排除 main_road。"
+      }
+    },
+    {
+      "sample_token": "9150678870764c1b87a649a25939c61b",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984244412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "道路两侧均为密集的斜向停车位，停满车辆，路面较窄且无中央分隔线，呈现典型的停车场内部通道特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），也不能合理归入高架、辅路或路口类别，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在两侧停满车辆的内部通道上，路面有直行箭头但无公共道路标线，周围为密集的露天停车位和绿化树木，属于停车场或园区内部车道。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路，且无法合理归入高架、主路、辅路或路口这五类公共道路状态，因此返回 null。最容易混淆的是 main_road，但此处明显缺乏公路通行性质。"
+      }
+    },
+    {
+      "sample_token": "8cd36e9531fb4eba8e6ac1d666c4641c",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984246412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条两侧停满车辆（左侧卡车、右侧多辆轿车）的狭窄通道上，路面有直行箭头标识，环境特征明显为停车场内部道路或私人区域车道。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且不符合高架、辅路或路口的定义，因此无法归入给定的0-4类，应返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在两侧停满车辆的内部通道上，路面有直行箭头但无标准公共道路标线，右侧可见出租车停放，环境特征符合停车场或园区内部车道。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路（main_road），且无法合理归入高架、辅路或路口等其他四类，因此返回 null。"
+      }
+    },
+    {
+      "sample_token": "7bebe3c9be714f02837f8617c56df122",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984246912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条较窄的铺装道路上，路面有直行箭头标识，道路两侧（左侧卡车停放处、右侧多辆轿车停放处）均为划线停车位或路侧停车带，且地面可见红色禁停标线。",
+        "reason": "根据严格规则，停车场内部通道或场内车道不属于公共主路。当前场景具有明显的停车区域特征（两侧密集停放车辆），属于封闭或半封闭的内部道路环境，不符合 elevated_up/down、main_road 或 side_road 的定义，因此返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在一条内部通道上，路面有直行箭头，但道路两侧紧邻路缘石并停满了车辆（左侧白色货车，右侧多辆私家车），背景为绿化坡地，具有典型的停车场或园区内部道路特征，缺乏公共主路的连续通行车道和标准公路标线。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。该场景明显属于此类非公共道路区域，无法合理归入高架、主路、辅路或路口五类，因此返回 null。最容易混淆的是 main_road，但因缺乏公共道路属性且符合排除规则，故不选。"
+      }
+    },
+    {
+      "sample_token": "e63b83b436a0479db7362338cdfab118",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984248412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "道路两侧（特别是右侧）为大面积草坪及垂直/斜向停车位，停满车辆；左侧有路缘石和绿化带分隔。路面较窄，无连续公共通行车道特征。",
+        "reason": "自车行驶在停车场内部通道或私人区域道路上，两侧均为停车位而非公共道路辅路或主路。根据规则‘停车场内部通道...不是公共主路’且‘若不能合理归入五类，返回 null’，故判定为 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在一条弯曲的铺装路面上，路面有直行箭头标线。道路右侧是草地及成排停放的私家车（停车位），左侧有路缘石、树木及停放的货车。整体环境特征符合停车场内部通道或园区/景区内部道路，而非具有连续通行车道和公路通行性质的普通公共主路。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不是公共主路。虽然路面有标线，但两侧密集的停车区域和非公共道路的路网结构表明这属于场内道路。若不能合理归入五类（0-4），应返回 null。最容易混淆的是 main_road，但此处缺乏公共道路的典型特征（如标准车道划分、公共路权标识等），且明确符合排除规则。"
+      }
+    },
+    {
+      "sample_token": "c567f9b8e9f34817acdc9c49d791c557",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984248912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条带有直行箭头的弯曲车道上，右侧路边有大量垂直/斜向停放的车辆，左侧为路缘石和草坪，整体环境特征符合停车场内部通道或私人区域道路。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且无法合理归入高架、辅路或路口等类别，因此返回 null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在一条弯曲的铺装路面上，路面有红色边缘线，右侧为草地及多辆停放的私家车，左侧有路缘石和绿化隔离带，背景为树林和坡地建筑，整体呈现停车场内部通道或园区/私人区域道路特征，无公共主路标线或路口特征。",
+        "reason": "该场景明显属于停车场内部通道或场内车道，根据规则‘停车场内部通道、私人出入口或场内车道不是公共主路；若不能合理归入五类，返回 null’，故判定为 null。最容易混淆的是 main_road，但此处缺乏公共道路通行性质及连续车道标线，且停车特征显著，不应归为主路。"
+      }
+    },
+    {
+      "sample_token": "8e352d4a6c6f40c8ad4f10a3d2c3f158",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984249412460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "道路两侧（特别是右侧）有大量车辆垂直或斜向停放在划线车位中，路面较窄且无标准车道分隔线，环境特征明显为停车场内部通道。",
+        "reason": "根据规则，停车场内部通道不属于公共主路，也不能合理归入高架、辅路或路口类别，因此返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在弯曲的铺装路面上，道路两侧及前方草坡上停放着多辆私家车，路面边缘有红色禁停标线，缺乏公共主干道的连续车道线和交通流特征，整体环境符合停车场内部通道或园区/私人区域道路的特征。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road），且无法合理归入高架、辅路或路口等其他四类，因此返回 null。最容易混淆的类别是 main_road，但此处缺乏公共道路的通行性质证据，不应仅因排除其他类而强行归类。"
+      }
+    },
+    {
+      "sample_token": "841dd6709e9b4d7c9d6bf888f1fe6d7e",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984249912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示为弯曲的内部道路，右侧草坪及划线区域停放着多辆静止车辆（如白色两厢车、灰色轿车），左侧有路缘石和绿化隔离带，无公共道路常见的车道标线。",
+        "reason": "根据严格规则，停车场内部通道或场内车道不属于公共主路。该场景具有明显的停车区特征（路边密集停放车辆、缺乏通行性车道线），属于封闭区域内部道路，无法归入高架、普通主路、辅路或路口类别，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "最后一帧显示自车行驶在弯曲的铺装路面上，右侧及前方草坡上停放着多辆私家车，路面边缘有红色禁停标线，无标准车道分界线，整体环境呈现为停车场内部通道或园区/住宅区内的私人通行道路。",
+        "reason": "根据规则，停车场内部通道、私人出入口或场内车道不属于公共主路（main_road）。该场景缺乏公共道路的连续通行车道和标准公路标线特征，且明显为停车区域周边的内部道路，无法合理归入高架、主路、辅路或路口五类，故返回 null。"
+      }
+    },
+    {
+      "sample_token": "a1289b27ca1d41deb6fc982be9a3d03c",
+      "scene": "scene-0916",
+      "cam_front_path": "/data/nuscenes/mini/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984250912460.jpg",
+      "flash": {
+        "model": "qwen3.8-flash",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "画面显示自车行驶在一条弯曲的铺装道路上，路旁草坪及划线区域内停放着多辆静止车辆（如左侧银色轿车、右侧深灰色轿车），背景为坡地住宅或建筑。",
+        "reason": "根据严格规则，停车场内部通道、私人出入口或场内车道不属于公共主路。该场景具有明显的居住区内部道路或停车区域特征，缺乏公共道路的连续通行性质和标准标线，无法合理归入高架、普通主路、辅路或路口类别，故返回null。"
+      },
+      "max": {
+        "model": "qwen3.8-max",
+        "status": "ok",
+        "proposed_label": null,
+        "confidence": "high",
+        "evidence": "自车行驶在弯曲的铺装路面上，路侧为草坡及多辆垂直/斜向停放的私家车，无连续通行车道标线，呈现典型的停车场内部通道或私人区域车道特征。",
+        "reason": "该场景缺乏公共主路的连续车道与公路通行性质，属于停车场内部通道或场内车道。根据规则，此类非公共道路不能归入 main_road，且不符合高架、辅路或路口特征，故返回 null。"
+      }
+    }
+  ]
+}

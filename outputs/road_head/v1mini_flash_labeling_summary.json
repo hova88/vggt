@@ -1,0 +1,102 @@
+{
+  "dataset": "NuScenes v1.0-mini",
+  "scope": "all CAM_FRONT sample keyframes; sweeps excluded",
+  "is_ground_truth": false,
+  "review_status": "unverified_model_proposal",
+  "model": [
+    "qwen3.8-flash"
+  ],
+  "policy_version": [
+    "evidence_based_v3"
+  ],
+  "template_rows": 404,
+  "proposal_rows": 404,
+  "unique_sample_tokens": 404,
+  "scenes": 10,
+  "proposed_class_distribution": {
+    "2": 305,
+    "4": 71,
+    "3": 2,
+    "None": 26
+  },
+  "history_padded_count": {
+    "3": 10,
+    "2": 10,
+    "1": 10,
+    "0": 374
+  },
+  "per_scene": {
+    "scene-0061": {
+      "samples": 39,
+      "proposed_class_distribution": {
+        "2": 31,
+        "4": 7,
+        "3": 1
+      }
+    },
+    "scene-0103": {
+      "samples": 40,
+      "proposed_class_distribution": {
+        "2": 36,
+        "4": 4
+      }
+    },
+    "scene-0553": {
+      "samples": 41,
+      "proposed_class_distribution": {
+        "2": 37,
+        "4": 4
+      }
+    },
+    "scene-0655": {
+      "samples": 41,
+      "proposed_class_distribution": {
+        "2": 41
+      }
+    },
+    "scene-0757": {
+      "samples": 41,
+      "proposed_class_distribution": {
+        "2": 37,
+        "4": 4
+      }
+    },
+    "scene-0796": {
+      "samples": 40,
+      "proposed_class_distribution": {
+        "2": 35,
+        "4": 5
+      }
+    },
+    "scene-0916": {
+      "samples": 41,
+      "proposed_class_distribution": {
+        "None": 26,
+        "2": 15
+      }
+    },
+    "scene-1077": {
+      "samples": 41,
+      "proposed_class_distribution": {
+        "2": 41
+      }
+    },
+    "scene-1094": {
+      "samples": 40,
+      "proposed_class_distribution": {
+        "2": 26,
+        "4": 13,
+        "3": 1
+      }
+    },
+    "scene-1100": {
+      "samples": 40,
+      "proposed_class_distribution": {
+        "2": 6,
+        "4": 34
+      }
+    }
+  },
+  "total_api_tokens": 810964,
+  "known_review_risk": "View Image audit found false intersection proposals; do not train as ground truth."
+}

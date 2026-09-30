@@ -1,0 +1,46 @@
+data:
+  root: /data/nuscenes
+  version: auto
+  annotation: /data/nuscenes/road_labels.jsonl
+  camera: CAM_FRONT
+  num_frames: 4
+  frame_stride: 1
+  max_sequences: 500
+  scene_split: true
+  pad_history: false
+  preprocess_mode: crop
+  image_width: 280  # 518 is original VGGT size; 280 fits 4 frames on a 16 GB GPU
+  val_fraction: 0.2
+  color_jitter: 0.0
+model:
+  checkpoint: null  # local VGGT model.pt; otherwise facebook/VGGT-1B
+  road_head:
+    road_dim: 256
+    spatial_num_heads: 8
+    temporal_num_heads: 8
+    temporal_layers: 2
+    temporal_ffn_dim: 1024
+    dropout: 0.1
+    num_classes: 5
+    use_camera_token: false
+training:
+  finetune_mode: head_only
+  last_blocks: 2
+  epochs: 30
+  batch_size: 1  # per rank; global nominal batch = batch_size * accum_steps * world_size
+  accum_steps: 1
+  num_workers: 0  # per rank; DDP defaults worker multiprocessing_context to spawn
+  head_lr: 0.0001
+  backbone_lr: 0.000002
+  weight_decay: 0.01
+  amp: bf16
+  grad_clip: 1.0
+  seed: 42
+  log_interval: 20  # training/validation batches between progress messages
+  ddp_timeout_seconds: 3600  # includes waiting for rank-0 validation and artifact writes
+  output_dir: outputs/road_head
+calibration:
+  temperature_scaling: true
+  ece_bins: 10
+hmm:
+  use_prior_correction: false

@@ -36,6 +36,45 @@ by validation NLL. The checkpoint stores the road head, updated aggregator
 parameters, and local pretrained path. Evaluation and calibration reload that
 path when `model.checkpoint` is unset. Keep the base VGGT file available.
 
+The trainer follows the explicit `train_one_epoch` / `validate` layout used in
+[timm's training script](https://github.com/huggingface/pytorch-image-models/blob/main/train.py)
+without adding a timm dependency. All trainer comments and log messages are in
+English. Set `training.log_interval` in YAML (default: 20 batches), or override
+it with `--log-interval 10`. The first and final batch are always logged.
+`--max-steps N` limits successful optimizer updates, including accumulation;
+skipped FP16 updates do not count. The final validation pass still covers the
+entire validation split when training stops partway through an epoch.
+
+Progress messages show cumulative loss and accuracy, learning rates in
+head/backbone order, elapsed time, sequence throughput, and peak allocated CUDA
+memory. `Acc@1` is a percentage in the console and a fraction in saved metrics.
+Training timing/rate use the interval since the previous log; validation uses
+averages since validation started. `Data` measures host time waiting for the
+next batch, excluding device transfer. A sequence contains several frames;
+`seq/s` is not a frame rate. CUDA is synchronized at training log boundaries
+for timing, rather than after every microbatch. No throughput gain is claimed
+without measuring a real run.
+
+Run artifacts in `training.output_dir`:
+
+| Artifact | Contents |
+| --- | --- |
+| `train.log` | Timestamped trainer messages; appended across runs |
+| `config.yaml`, `args.json` | Effective configuration and CLI arguments |
+| `summary.csv` | One flushed row per evaluated epoch, including skipped updates |
+| `best.pt` | Best validation-NLL inference checkpoint, including its metrics |
+| `metrics.json`, `*.png` | Latest epoch's validation metrics and plots |
+| `best/metrics.json`, `best/*.png` | Validation metrics and plots for `best.pt` |
+
+Use a separate output directory for each experiment: configuration, CSV, plots,
+and the best checkpoint are replaced for a new run. Checkpoints are written to
+a temporary sibling file and atomically renamed. They do not contain optimizer,
+scaler, or RNG states for resuming training. AdamW uses the configured fixed
+learning rates and applies weight decay to all parameters in each group.
+`grad_clip: 0` disables clipping; nonfinite FP32/BF16 gradient norms still stop
+training before the optimizer update. See the detailed
+[static review](../docs/train_road_head_review.md) for rationale and limitations.
+
 ## Two-GPU v1.0-mini memorization experiment
 
 ```bash

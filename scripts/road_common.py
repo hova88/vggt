@@ -270,13 +270,16 @@ def collect(model, batches, device, amp, debug_first=False):
 
 
 def metrics(logits, targets, tau=1.0, bins=10):
-    probs = (logits.float() / tau).softmax(-1)
+    # Compute NLL in log space: clamping probabilities would cap the penalty
+    # for confident wrong predictions and can change best-checkpoint selection.
+    log_probs = (logits.float() / tau).log_softmax(-1)
+    probs = log_probs.exp()
     truth, pred = targets.argmax(-1), probs.argmax(-1)
     cm = torch.bincount(truth * 5 + pred, minlength=25).reshape(5, 5)
     precision = cm.diag() / cm.sum(0).clamp_min(1)
     recall = cm.diag() / cm.sum(1).clamp_min(1)
     f1 = 2 * precision * recall / (precision + recall).clamp_min(1e-12)
-    nll = -(targets * probs.clamp_min(1e-12).log()).sum(-1).mean()
+    nll = -(targets * log_probs).sum(-1).mean()
     brier = ((probs - targets)**2).sum(-1).mean()
     conf = probs.max(-1).values
     correct = pred.eq(truth).float()

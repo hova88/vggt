@@ -36,6 +36,7 @@ training:
   amp: bf16
   grad_clip: 1.0
   seed: 42
+  log_interval: 20  # training/validation batches between progress messages
   output_dir: outputs/road_head
 calibration:
   temperature_scaling: true
